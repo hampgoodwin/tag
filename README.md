@@ -1,5 +1,8 @@
 # Tag
 
+[![0rwx: r (read)](https://img.shields.io/badge/0rwx-r%20(read)-blue)](https://0rwx.com/)
+[![0rwx: w (write)](https://img.shields.io/badge/0rwx-w%20(write)-yellow)](https://0rwx.com/)
+
 A learning and test repository for building a top-down **Tag** game in Rust using the [Bevy](https://bevyengine.org/) game engine.
 
 ## Game Concept
