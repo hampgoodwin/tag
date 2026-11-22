@@ -1,7 +1,21 @@
 # Tag
 
-[![0rwx: r (read)](https://img.shields.io/badge/0rwx-r%20(read)-blue)](https://0rwx.com/)
-[![0rwx: w (write)](https://img.shields.io/badge/0rwx-w%20(write)-yellow)](https://0rwx.com/)
+<p>
+  <a href="https://0rwx.com/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://0rwx.com/static/AI-R-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="https://0rwx.com/static/AI-R-light.png">
+      <img alt="AI:R" src="https://0rwx.com/static/AI-R-dark.png" height="48">
+    </picture>
+  </a>
+  <a href="https://0rwx.com/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://0rwx.com/static/AI-W-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="https://0rwx.com/static/AI-W-light.png">
+      <img alt="AI:W" src="https://0rwx.com/static/AI-W-dark.png" height="48">
+    </picture>
+  </a>
+</p>
 
 A learning and test repository for building a top-down **Tag** game in Rust using the [Bevy](https://bevyengine.org/) game engine.
 
