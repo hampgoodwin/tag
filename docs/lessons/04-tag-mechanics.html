@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lesson 04: The 'It' State, Collision Messages &amp; Tag Cooldowns — Tag in Bevy 0.20</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lesson.js" defer></script>
+</head>
+<body data-lesson-id="04">
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-badge">L04</span>
+      <div class="brand-text">
+        <h1>Tag Mechanics &amp; Chase/Flee</h1>
+        <p>Lesson 04 of 07 — Build 2D Tag in Bevy 0.20</p>
+      </div>
+    </a>
+    <nav class="nav-pills" aria-label="Lessons">
+      <a class="nav-pill" href="index.html">Hub</a>
+      <a class="nav-pill" data-lesson-pill="01" href="01-arena-and-camera.html">01</a>
+      <a class="nav-pill" data-lesson-pill="02" href="02-player-movement-and-timestep.html">02</a>
+      <a class="nav-pill" data-lesson-pill="03" href="03-npcs-and-2d-collisions.html">03</a>
+      <a class="nav-pill active" data-lesson-pill="04" href="04-tag-mechanics.html">04</a>
+      <a class="nav-pill" data-lesson-pill="05" href="05-elimination-and-flashing.html">05</a>
+      <a class="nav-pill" data-lesson-pill="06" href="06-hud-and-timer-ui.html">06</a>
+      <a class="nav-pill" data-lesson-pill="07" href="07-menus-pause-and-game-over.html">07</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn" id="toggleSolutionsBtn" type="button">Expand Solutions</button>
+      <button class="btn btn-done" id="markDoneBtn" type="button">Mark Complete</button>
+      <button class="btn" id="themeToggle" type="button">Light theme</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="lesson-hero">
+      <div class="lesson-eyebrow">
+        <span class="pill pill-bevy">Messages &amp; Marker Components</span>
+        <span class="pill pill-physics">Chase/Flee Steering &amp; Contact Trap</span>
+        <span class="pill pill-rust">Option&lt;&amp;T&gt;, total_cmp &amp; Deferred Commands</span>
+      </div>
+      <h2>Lesson 04: The <code>'It'</code> State, Collision Messages &amp; Tag Cooldowns</h2>
+      <p class="lesson-lead">
+        Right now your squares collide and bounce, but nobody is <code>'it'</code>.
+        In this lesson, you will decouple collision physics from game rules using Bevy 0.20 <code>Message</code>s, solve the notorious multi-frame "ping-pong tag" physics trap, and upgrade NPC steering to actively <strong>chase</strong> and <strong>flee</strong>!
+      </p>
+    </div>
+
+    <div class="objectives-grid">
+      <div class="obj-card">
+        <h3 style="color: var(--blue);">Game Physics &amp; AI</h3>
+        <ul>
+          <li>Why sustained steering causes multi-tick re-collisions ("sticky tag")</li>
+          <li>Solving re-collision with <code>TagCooldown</code> immunity</li>
+          <li>Chase-nearest vs. Flee-threat steering vectors</li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--accent);">Bevy 0.20 Concepts</h3>
+        <ul>
+          <li><code>#[derive(Message)]</code>, <code>MessageWriter</code> &amp; <code>MessageReader</code></li>
+          <li>Adding/removing <code>IsIt</code> dynamically via <code>Commands</code></li>
+          <li>Why deferred <code>Commands</code> need local state tracking in loops</li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--purple);">Rust Concepts</h3>
+        <ul>
+          <li>Optional queries <code>Option&lt;&amp;IsIt&gt;</code> &amp; <code>.is_some()</code></li>
+          <li>Tuple pattern matching <code>match (is_it.is_some(), player.is_some())</code></li>
+          <li>Iterator <code>.min_by()</code> + <code>f32::total_cmp</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <section>
+      <h2>1. Two Classic Bugs Every First Tag Game Hits</h2>
+
+      <h3>Trap #1: The Multi-Tick "Ping-Pong" Tag</h3>
+      <p>
+        Suppose Square A is <code>'it'</code> and rams into Square B while holding <kbd>D</kbd>.
+        On tick 1, your AABB solver separates them by <code>0.0 px</code> gap and transfers <code>IsIt</code> from A → B.
+        But <strong>15 milliseconds later</strong> (tick 2), Square A is still holding <kbd>D</kbd>, moving right into B again!
+        Without protection, tick 2 detects another collision and hands <code>IsIt</code> right back from B → A! To a human eye at 64 Hz, who ends up <code>'it'</code> feels completely random.
+      </p>
+      <p>
+        <strong>The Fix:</strong> Attach a brief <code>TagCooldown(Timer)</code> (e.g., <code>0.45s</code>) whenever a tag occurs so neither participant can immediately re-tag on sustained contact!
+      </p>
+
+      <!-- Interactive Ping-Pong vs Cooldown Simulator -->
+      <div class="lab-card">
+        <div class="lab-header">
+          <div class="lab-title">Interactive Lab: Sustained Collision With vs. Without <code>TagCooldown</code></div>
+          <div class="lab-controls">
+            <label><input type="checkbox" id="chkCooldown" checked /> Enable 0.45s TagCooldown</label>
+            <button class="btn" id="btnReplayTag" type="button">Replay Collision</button>
+          </div>
+        </div>
+        <div class="lab-body">
+          <div class="lab-canvas-wrap">
+            <canvas id="tagCanvas" width="520" height="220"></canvas>
+          </div>
+          <div class="lab-readout">
+            <div class="readout-row">
+              <span class="readout-key">Current 'It':</span>
+              <span class="readout-val" id="roWhoIt" style="color: var(--accent);">Square A</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Tag Swaps:</span>
+              <span class="readout-val" id="roSwaps">0</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Cooldown Left:</span>
+              <span class="readout-val" id="roCd">0.00s</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Trap #2: Deferred <code>Commands</code> in a 3-Square Pileup</h3>
+      <p>
+        In Bevy ECS, calling <code>commands.entity(old_it).remove::&lt;IsIt&gt;()</code> does <strong>not</strong> mutate component tables immediately—it queues the change until the end of the system step so active queries stay memory-safe.
+      </p>
+      <p>
+        Now imagine Square A (<code>IsIt</code>) wedges between Square B and Square C on the exact same physics tick!
+        <code>resolve_character_collisions</code> emits <em>both</em> <code>CollisionMessage(A, B)</code> and <code>CollisionMessage(A, C)</code>.
+        If your tag handler checks a read-only <code>Query&lt;..., With&lt;IsIt&gt;&gt;</code>, it still thinks <code>A</code> is <code>'it'</code> during the second message—spawning <strong>two</strong> <code>IsIt</code> squares!
+        Even worse, if B and C also collided on that same tick, chaining another transfer immediately would invisibly bounce <code>'it'</code> <code>A → B → C</code> in 0 ms before <code>TagCooldown</code> has even flushed!
+        Exiting the loop with <code>break;</code> after a single tag transfer per physics tick guarantees at most one clean hand-off per tick and ensures <code>Commands</code> flushes before the next collision check.
+      </p>
+    </section>
+
+    <section>
+      <h2>2. Decoupling Physics &amp; Gameplay with Bevy 0.20 <code>Message</code>s</h2>
+      <div class="callout callout-bevy">
+        <div class="callout-title">Bevy 0.20 Note: <code>Message</code> vs. <code>Event</code></div>
+        <p>
+          In Bevy 0.20, buffered inter-system communication uses <code>#[derive(Message)]</code>, registered via <code>app.add_message::&lt;CollisionMessage&gt;()</code>, written with <code>MessageWriter&lt;CollisionMessage&gt;</code>, and read with <code>MessageReader&lt;CollisionMessage&gt;</code>!
+          (<code>Event</code> / <code>EntityEvent</code> is now reserved for immediate observer callbacks like UI clicks, which you'll use in Lesson 07.)
+        </p>
+      </div>
+      <p>
+        Why emit <code>CollisionMessage(Entity, Entity)</code> instead of putting tag rules directly inside <code>resolve_character_collisions</code>?
+        Because your physics solver stays 100% pure geometry &amp; momentum—later you can add sound effects, particle sparks, or camera shake by adding new reader systems without ever touching your AABB math!
+      </p>
+    </section>
+
+    <section>
+      <h2>3. Guided Building Blocks</h2>
+
+      <!-- Step 1 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 1</span>
+          <h3>Define <code>IsIt</code>, <code>TagCooldown</code> &amp; <code>CollisionMessage</code></h3>
+        </div>
+        <ul class="api-list">
+          <li>Add <code>TAG_COOLDOWN_SECS: f32 = 0.45</code>.</li>
+          <li>Define marker <code>#[derive(Component)] pub struct IsIt;</code>.</li>
+          <li>Define <code>#[derive(Component)] pub struct TagCooldown(pub Timer);</code>.</li>
+          <li>Define <code>#[derive(Message, Clone, Copy, Debug)] pub struct CollisionMessage(pub Entity, pub Entity);</code> and register <code>.add_message::&lt;CollisionMessage&gt;()</code> on <code>App</code>.</li>
+          <li>Mark <strong>one NPC</strong> (e.g., <code>i == 0</code> in <code>spawn_npcs</code>) with <code>IsIt</code> at startup so the first chase begins immediately!</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 1 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">pub const TAG_COOLDOWN_SECS: f32 = 0.45;
+
+#[derive(Component)]
+pub struct IsIt;
+
+#[derive(Component)]
+pub struct TagCooldown(pub Timer);
+
+#[derive(Message, Clone, Copy, Debug)]
+pub struct CollisionMessage(pub Entity, pub Entity);</code></pre>
+            <p style="margin-top: 10px;">In <code>spawn_npcs</code>, capture the spawned entity ID and insert <code>IsIt</code> on the first NPC:</p>
+<pre><code class="language-rust">        let mut entity_cmds = commands.spawn((
+            Character,
+            Npc,
+            Sprite::from_color(npc_color, Vec2::splat(CHARACTER_SIZE)),
+            Transform::from_xyz(pos.x, pos.y, 2.0),
+            Velocity(initial_dir * BASE_SPEED),
+            MoveSpeed(BASE_SPEED),
+            Collider {
+                half_size: Vec2::splat(CHARACTER_SIZE * 0.5),
+            },
+        ));
+        if i == 0 {
+            entity_cmds.insert(IsIt);
+        }</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concept: Method Chaining &amp; <code>EntityCommands</code></strong>
+              <ul>
+                <li><code>commands.spawn(...)</code> returns an <code>EntityCommands</code> handle for that specific entity, letting you conditionally attach extra components like <code>IsIt</code> without duplicating the entire <code>spawn</code> call!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 2</span>
+          <h3>Emit <code>CollisionMessage</code> &amp; Handle Tag Transfers</h3>
+        </div>
+        <ul class="api-list">
+          <li>Update <code>resolve_character_collisions</code> to include <code>Entity</code> in its query tuple and accept <code>mut collisions: MessageWriter&lt;CollisionMessage&gt;</code>. When <code>overlap_x &gt; 0.0 &amp;&amp; overlap_y &gt; 0.0</code>, call <code>collisions.write(CollisionMessage(entity_a, entity_b));</code>.</li>
+          <li>Write <code>tick_tag_cooldowns(mut commands: Commands, time: Res&lt;Time&gt;, mut query: Query&lt;(Entity, &amp;mut TagCooldown)&gt;)</code> to tick timers and <code>remove::&lt;TagCooldown&gt;()</code> once finished.</li>
+          <li>Write <code>handle_tag_transfers</code>: read <code>MessageReader&lt;CollisionMessage&gt;</code>, check who is <code>current_it</code>, ensure neither entity currently has <code>TagCooldown</code>, and move <code>IsIt</code> from the old holder to the other entity while inserting <code>TagCooldown(Timer::from_seconds(TAG_COOLDOWN_SECS, TimerMode::Once))</code> on the former holder!</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 2 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">// Inside resolve_character_collisions signature:
+fn resolve_character_collisions(
+    mut query: Query&lt;(Entity, &amp;mut Transform, &amp;mut Velocity, &amp;Collider), With&lt;Character&gt;&gt;,
+    mut collisions: MessageWriter&lt;CollisionMessage&gt;,
+) {
+    let mut combinations = query.iter_combinations_mut();
+    while let Some([(entity_a, mut tf_a, mut vel_a, col_a), (entity_b, mut tf_b, mut vel_b, col_b)]) =
+        combinations.fetch_next()
+    {
+        // ... same AABB + MTV + impulse math ...
+        if overlap_x &gt; 0.0 &amp;&amp; overlap_y &gt; 0.0 {
+            // ... separate &amp; apply impulse ...
+            collisions.write(CollisionMessage(entity_a, entity_b));
+        }
+    }
+}
+
+fn tick_tag_cooldowns(
+    mut commands: Commands,
+    time: Res&lt;Time&gt;,
+    mut query: Query&lt;(Entity, &amp;mut TagCooldown)&gt;,
+) {
+    let dt = time.delta();
+    for (entity, mut cooldown) in &amp;mut query {
+        if cooldown.0.tick(dt).is_finished() {
+            commands.entity(entity).remove::&lt;TagCooldown&gt;();
+        }
+    }
+}
+
+fn handle_tag_transfers(
+    mut commands: Commands,
+    mut collisions: MessageReader&lt;CollisionMessage&gt;,
+    it_query: Query&lt;Entity, With&lt;IsIt&gt;&gt;,
+    cooldowns: Query&lt;&amp;TagCooldown&gt;,
+) {
+    let Some(it_entity) = it_query.iter().next() else {
+        return;
+    };
+
+    for &amp;CollisionMessage(a, b) in collisions.read() {
+        // Determine if one of the colliding squares is currently 'it'
+        let (old_it, new_it) = if a == it_entity {
+            (a, b)
+        } else if b == it_entity {
+            (b, a)
+        } else {
+            continue;
+        };
+
+        // Ignore if either square is still in post-tag immunity
+        if cooldowns.contains(old_it) || cooldowns.contains(new_it) {
+            continue;
+        }
+
+        commands
+            .entity(old_it)
+            .remove::&lt;IsIt&gt;()
+            .insert(TagCooldown(Timer::from_seconds(TAG_COOLDOWN_SECS, TimerMode::Once)));
+        commands.entity(new_it).insert(IsIt);
+
+        // Allow at most one tag transfer per physics tick so deferred Commands
+        // flush cleanly before another transfer can occur!
+        break;
+    }
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concepts Inside This Snippet:</strong>
+              <ul>
+                <li><strong><code>let ... else</code> Statement:</strong> <code>let Some(it_entity) = it_query.iter().next() else { return; };</code> is modern Rust's cleanest way to unwrap an <code>Option</code> and exit early if nobody is currently <code>'it'</code>—zero rightward indentation drift!</li>
+                <li><strong>Destructuring in Loop Header:</strong> <code>for &amp;CollisionMessage(a, b) in collisions.read()</code> copies the two <code>Entity</code> IDs right out of the borrowed message reference.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 3</span>
+          <h3>Upgrade <code>npc_steering</code> (Chase Nearest / Flee <code>'It'</code>) &amp; Sync Colors</h3>
+        </div>
+        <p>
+          Now bring the arena to life!
+        </p>
+        <ul class="api-list">
+          <li>In <code>npc_steering</code>, include <code>Option&lt;&amp;IsIt&gt;</code> in <code>all_characters</code> snapshot: <code>Vec&lt;(Entity, Vec2, bool)&gt;</code>.
+            <ul>
+              <li><strong>If this NPC is <code>'it'</code>:</strong> Find the closest other character using <code>.min_by(|a, b| dist_a.total_cmp(&amp;dist_b))</code> and steer straight toward them! (Skip wall avoidance when chasing closely so <code>'it'</code> can corner victims against walls!)</li>
+              <li><strong>If this NPC is NOT <code>'it'</code>:</strong> Steer away from the <code>'it'</code> character's position + keep your personal-space separation and soft wall avoidance so fleeing NPCs curve around corners instead of trapping themselves!</li>
+            </ul>
+          </li>
+          <li>Write <code>sync_character_colors</code> in <code>Update</code> querying <code>(&amp;mut Sprite, Option&lt;&amp;Player&gt;, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;</code>:
+            <ul>
+              <li><code>IsIt</code> → bright coral-red <code>Color::srgb(0.97, 0.32, 0.29)</code> (even if it's the Player, maybe slightly brighter orange-red so you always know who is <code>'it'</code>!).</li>
+              <li><code>Player</code> (safe) → sky blue <code>Color::srgb(0.30, 0.67, 0.97)</code>.</li>
+              <li><code>Npc</code> (safe) → mint green <code>Color::srgb(0.41, 0.86, 0.49)</code>.</li>
+            </ul>
+          </li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 3 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn npc_steering(
+    time: Res&lt;Time&gt;,
+    arena: Res&lt;ArenaBounds&gt;,
+    all_characters: Query&lt;(Entity, &amp;Transform, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;&gt;,
+    mut npcs: Query&lt;(Entity, &amp;Transform, &amp;MoveSpeed, &amp;mut Velocity, Option&lt;&amp;IsIt&gt;), With&lt;Npc&gt;&gt;,
+) {
+    let snapshot: Vec&lt;(Entity, Vec2, bool)&gt; = all_characters
+        .iter()
+        .map(|(e, tf, is_it)| (e, tf.translation.truncate(), is_it.is_some()))
+        .collect();
+
+    let it_pos = snapshot
+        .iter()
+        .find(|&amp;&amp;(_, _, is_it)| is_it)
+        .map(|&amp;(_, pos, _)| pos);
+
+    let dt = time.delta_secs();
+    let blend = (NPC_STEER_ACCEL * dt).min(1.0);
+    let wall_margin = 85.0;
+
+    for (entity, transform, speed, mut velocity, is_it) in &amp;mut npcs {
+        let pos = transform.translation.truncate();
+        let mut steer = Vec2::ZERO;
+
+        if is_it.is_some() {
+            // CHASE: head directly toward the closest non-self character
+            if let Some(&amp;(_, target_pos, _)) = snapshot
+                .iter()
+                .filter(|&amp;&amp;(other_e, _, _)| other_e != entity)
+                .min_by(|&amp;&amp;(_, pos_a, _), &amp;&amp;(_, pos_b, _)| {
+                    pos.distance_squared(pos_a)
+                        .total_cmp(&amp;pos.distance_squared(pos_b))
+                })
+            {
+                steer = (target_pos - pos).normalize_or_zero();
+            }
+        } else {
+            // FLEE: steer away from 'it' (capped below wall repulsion so NPCs curve out of corners!)
+            if let Some(threat_pos) = it_pos {
+                let away = pos - threat_pos;
+                let dist = away.length().max(1.0);
+                let urgency = (280.0 / dist).clamp(0.8, 2.2);
+                steer += (away / dist) * urgency;
+            } else {
+                steer += velocity.0.normalize_or(Vec2::X);
+            }
+
+            // Personal-space separation from fellow runners
+            for &amp;(other_e, other_pos, _) in &amp;snapshot {
+                if other_e == entity {
+                    continue;
+                }
+                let away = pos - other_pos;
+                let dist = away.length();
+                if dist &gt; 0.001 &amp;&amp; dist &lt; 85.0 {
+                    steer += (away / dist) * ((85.0 - dist) / 85.0) * 1.2;
+                }
+            }
+
+            // Soft wall avoidance so runners bank along edges instead of pinning into corners
+            let dist_right = arena.half_size.x - pos.x;
+            let dist_left = arena.half_size.x + pos.x;
+            let dist_top = arena.half_size.y - pos.y;
+            let dist_bottom = arena.half_size.y + pos.y;
+
+            if dist_right &lt; wall_margin {
+                steer.x -= ((wall_margin - dist_right) / wall_margin) * 2.6;
+            }
+            if dist_left &lt; wall_margin {
+                steer.x += ((wall_margin - dist_left) / wall_margin) * 2.6;
+            }
+            if dist_top &lt; wall_margin {
+                steer.y -= ((wall_margin - dist_top) / wall_margin) * 2.6;
+            }
+            if dist_bottom &lt; wall_margin {
+                steer.y += ((wall_margin - dist_bottom) / wall_margin) * 2.6;
+            }
+        }
+
+        let desired_vel = steer.normalize_or_zero() * speed.0;
+        velocity.0 = velocity.0.lerp(desired_vel, blend);
+    }
+}
+
+fn sync_character_colors(
+    mut query: Query&lt;(&amp;mut Sprite, Option&lt;&amp;Player&gt;, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;&gt;,
+) {
+    for (mut sprite, player, is_it) in &amp;mut query {
+        sprite.color = match (is_it.is_some(), player.is_some()) {
+            (true, true) => Color::srgb(1.0, 0.45, 0.20),   // Player is IT (vivid orange-red)
+            (true, false) => Color::srgb(0.95, 0.26, 0.26),  // NPC is IT (crimson red)
+            (false, true) => Color::srgb(0.30, 0.67, 0.97),  // Player safe (sky blue)
+            (false, false) => Color::srgb(0.41, 0.86, 0.49), // NPC safe (mint green)
+        };
+    }
+}</code></pre>
+            <p style="margin-top: 10px;">Register your new message and systems in <code>main()</code>:</p>
+<pre><code class="language-rust">        .add_message::&lt;CollisionMessage&gt;()
+        .add_systems(
+            FixedUpdate,
+            (
+                tick_tag_cooldowns,
+                player_input,
+                npc_steering,
+                apply_velocity,
+                resolve_character_collisions,
+                confine_to_arena,
+                handle_tag_transfers,
+            )
+                .chain(),
+        )
+        .add_systems(Update, sync_character_colors)</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concepts Inside This Snippet:</strong>
+              <ul>
+                <li><strong>Why <code>distance_squared</code> + <code>total_cmp</code>?</strong> Comparing squared distances avoids calling expensive square-root instructions in a loop (<code>a &lt; b</code> iff <code>a² &lt; b²</code> for non-negative numbers!). And because IEEE-754 floats can represent <code>NaN</code>, Rust's <code>f32</code> only implements <code>PartialOrd</code>, not <code>Ord</code>—so <code>.min_by()</code> uses <code>f32::total_cmp(&amp;other)</code> to provide a total ordering!</li>
+                <li><strong>Exhaustive Tuple Matching:</strong> <code>match (is_it.is_some(), player.is_some())</code> matches a <code>(bool, bool)</code> pair. Rust's compiler statically proves all 4 combinations are covered!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="checklist-card">
+        <h3>Verify Before Moving On (<code>cargo run</code>)</h3>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>One red NPC starts as <code>'it'</code> and actively chases the nearest square while green NPCs scatter and bank around walls!</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>When the red square collides with you (or another NPC), <code>'it'</code> transfers cleanly on impact without flickering back and forth!</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>When you become <code>'it'</code>, your <code>1.2×</code> speed advantage lets you hunt down fleeing <code>1.0×</code> NPCs!</span>
+        </label>
+      </div>
+    </section>
+
+    <footer class="lesson-footer">
+      <a class="footer-nav-link" href="03-npcs-and-2d-collisions.html">
+        <span>← Previous Lesson</span>
+        <strong>03: NPCs &amp; 2D Collisions</strong>
+      </a>
+      <a class="footer-nav-link" href="05-elimination-and-flashing.html" style="text-align: right;">
+        <span>Next Lesson →</span>
+        <strong>05: 10s Elimination &amp; 5s Flash</strong>
+      </a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById("tagCanvas");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const chkCd = document.getElementById("chkCooldown");
+      const btnReplay = document.getElementById("btnReplayTag");
+
+      let a, b, whoIt, swaps, cd;
+      function reset() {
+        a = { x: 120, y: 110, vx: 135, half: 26 };
+        b = { x: 300, y: 110, vx: 30, half: 26 };
+        whoIt = "A";
+        swaps = 0;
+        cd = 0;
+      }
+      reset();
+
+      btnReplay.addEventListener("click", reset);
+      chkCd.addEventListener("change", reset);
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
+
+        cd = Math.max(0, cd - dt);
+
+        // A keeps pressing right (+X), B moves slowly right
+        a.vx += (135 - a.vx) * Math.min(1, 8 * dt);
+        b.vx += (55 - b.vx) * Math.min(1, 4 * dt);
+
+        a.x += a.vx * dt;
+        b.x += b.vx * dt;
+
+        const overlap = (a.half + b.half) - Math.abs(b.x - a.x);
+        if (overlap > 0) {
+          a.x -= overlap * 0.5;
+          b.x += overlap * 0.5;
+          const rel = b.vx - a.vx;
+          if (rel < 0) {
+            const j = -(1 + 0.55) * rel * 0.5;
+            a.vx -= j;
+            b.vx += j;
+          }
+          if (!chkCd.checked || cd <= 0) {
+            whoIt = whoIt === "A" ? "B" : "A";
+            swaps += 1;
+            if (chkCd.checked) cd = 0.45;
+          }
+        }
+
+        if (b.x > canvas.width - 40) reset();
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#080b10";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        function drawSq(obj, label, isIt) {
+          ctx.fillStyle = isIt ? "#f7554a" : "#4dabf7";
+          ctx.fillRect(obj.x - obj.half, obj.y - obj.half, obj.half * 2, obj.half * 2);
+          if (cd > 0 && !isIt) {
+            ctx.strokeStyle = "#f2cc60";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(obj.x - obj.half - 4, obj.y - obj.half - 4, obj.half * 2 + 8, obj.half * 2 + 8);
+            ctx.setLineDash([]);
+          }
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 12px ui-monospace, SFMono-Regular, Menlo, monospace";
+          ctx.fillText(isIt ? `${label} (IT)` : label, obj.x - (isIt ? 21 : 5), obj.y + 4);
+        }
+
+        drawSq(a, "A", whoIt === "A");
+        drawSq(b, "B", whoIt === "B");
+
+        document.getElementById("roWhoIt").textContent = `Square ${whoIt}`;
+        const swEl = document.getElementById("roSwaps");
+        swEl.textContent = swaps > 1 ? `${swaps} (ping-pong bug!)` : `${swaps}`;
+        swEl.style.color = swaps > 1 ? "var(--accent)" : "var(--green)";
+        document.getElementById("roCd").textContent = `${cd.toFixed(2)}s`;
+
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>

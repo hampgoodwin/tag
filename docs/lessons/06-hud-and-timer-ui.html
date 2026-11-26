@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lesson 06: Bevy UI Flexbox Layout &amp; Live Countdown HUD — Tag in Bevy 0.20</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lesson.js" defer></script>
+</head>
+<body data-lesson-id="06">
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-badge">L06</span>
+      <div class="brand-text">
+        <h1>HUD &amp; Live Timer UI</h1>
+        <p>Lesson 06 of 07 — Build 2D Tag in Bevy 0.20</p>
+      </div>
+    </a>
+    <nav class="nav-pills" aria-label="Lessons">
+      <a class="nav-pill" href="index.html">Hub</a>
+      <a class="nav-pill" data-lesson-pill="01" href="01-arena-and-camera.html">01</a>
+      <a class="nav-pill" data-lesson-pill="02" href="02-player-movement-and-timestep.html">02</a>
+      <a class="nav-pill" data-lesson-pill="03" href="03-npcs-and-2d-collisions.html">03</a>
+      <a class="nav-pill" data-lesson-pill="04" href="04-tag-mechanics.html">04</a>
+      <a class="nav-pill" data-lesson-pill="05" href="05-elimination-and-flashing.html">05</a>
+      <a class="nav-pill active" data-lesson-pill="06" href="06-hud-and-timer-ui.html">06</a>
+      <a class="nav-pill" data-lesson-pill="07" href="07-menus-pause-and-game-over.html">07</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn" id="toggleSolutionsBtn" type="button">Expand Solutions</button>
+      <button class="btn btn-done" id="markDoneBtn" type="button">Mark Complete</button>
+      <button class="btn" id="themeToggle" type="button">Light theme</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="lesson-hero">
+      <div class="lesson-eyebrow">
+        <span class="pill pill-bevy">Node, Text &amp; children![]</span>
+        <span class="pill pill-rust">Declarative Macros &amp; format!</span>
+        <span class="pill pill-milestone">On-Screen Timer HUD</span>
+      </div>
+      <h2>Lesson 06: Bevy UI Flexbox Layout &amp; Live Countdown HUD</h2>
+      <p class="lesson-lead">
+        Players shouldn't have to guess whether 2 seconds or 8 seconds remain before elimination!
+        In this lesson, you will build a crisp top-of-screen HUD bar using Bevy 0.20's Flexbox <code>Node</code> layout and <code>children![]</code> hierarchy macro to display the live 10s / 5s countdown and survivor count.
+      </p>
+    </div>
+
+    <div class="objectives-grid">
+      <div class="obj-card">
+        <h3 style="color: var(--blue);">UI Layout Concepts</h3>
+        <ul>
+          <li>Screen-space UI coordinates vs. 2D world space</li>
+          <li>Flexbox containers (<code>justify_content</code>, <code>align_items</code>, <code>column_gap</code>)</li>
+          <li>Pass-through overlays via <code>Pickable::IGNORE</code></li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--accent);">Bevy 0.20 Concepts</h3>
+        <ul>
+          <li><code>Node</code> (including <code>border_radius</code>), <code>BackgroundColor</code> &amp; <code>BorderColor::all</code></li>
+          <li><code>Text::new(...)</code>, <code>TextFont::from_font_size(...)</code> &amp; <code>TextColor</code></li>
+          <li>Spawning declarative parent-child trees with <code>children![]</code></li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--purple);">Rust Concepts</h3>
+        <ul>
+          <li>Declarative macros (<code>children![...]</code> &amp; <code>format!(...)</code>)</li>
+          <li>Format specifiers like <code>{:.1}</code> (1 decimal place)</li>
+          <li>Disjoint marker queries (<code>With&lt;T&gt;</code>, <code>Without&lt;U&gt;</code>) for dynamic UI text</li>
+        </ul>
+      </div>
+    </div>
+
+    <section>
+      <h2>1. How Bevy UI Renders Over Your 2D World</h2>
+      <p>
+        Unlike <code>Sprite</code> entities—which live in center-origin world coordinates and move if the camera moves—<code>Node</code> entities live in a dedicated <strong>screen-space UI layout pass</strong> powered by the CSS Flexbox &amp; Grid algorithms (via the <code>taffy</code> layout engine):
+      </p>
+      <ul>
+        <li><code>PositionType::Absolute</code> with <code>top: Val::Px(10.0)</code>, <code>left: Val::Px(0.0)</code>, and <code>width: Val::Percent(100.0)</code> pins a full-width invisible flex row across the top margin of the window—sitting cleanly above your centered <code>800 × 560</code> arena!</li>
+        <li>Setting <code>justify_content: JustifyContent::Center</code> centers the inner pill badge horizontally regardless of window size.</li>
+        <li>Adding <code>Pickable::IGNORE</code> on decorative HUD containers tells Bevy's pointer picking system not to swallow mouse clicks—a great habit before we add clickable menus in Lesson 07!</li>
+      </ul>
+
+      <!-- Interactive HUD Preview -->
+      <div class="lab-card">
+        <div class="lab-header">
+          <div class="lab-title">Interactive Lab: Live HUD Preview Across Game Phases</div>
+          <div class="lab-controls">
+            <label>Time Left: <input type="range" id="rngTime" min="0.1" max="10" step="0.1" value="7.4" /></label>
+            <label><input type="checkbox" id="chkFlashMode" /> FlashingNext (5s)</label>
+          </div>
+        </div>
+        <div class="lab-body">
+          <div class="lab-canvas-wrap" style="padding: 28px 16px; background: #080b10;">
+            <div id="hudMockPill" style="display: inline-flex; align-items: center; gap: 20px; padding: 8px 18px; border-radius: 8px; background: #141a24; border: 1px solid #2d384c; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">
+              <span id="hudMockTimer" style="font-size: 16px; font-weight: 700; color: #e6edf3;">IT ELIMINATED IN: 7.4s</span>
+              <span style="color: #8b949e; font-size: 13px;">SURVIVORS: 5</span>
+            </div>
+          </div>
+          <div class="lab-readout">
+            <div class="readout-row">
+              <span class="readout-key">Outer Node:</span>
+              <span class="readout-val">width: 100%</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">justify_content:</span>
+              <span class="readout-val">Center</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Urgency Color:</span>
+              <span class="readout-val" id="roUrgency">Normal</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-bevy">
+        <div class="callout-title">Bevy 0.20 API Highlights</div>
+        <ul>
+          <li><strong><code>Node.border_radius</code>:</strong> Rounded corners live right inside <code>Node { border_radius: BorderRadius::all(Val::Px(8.0)), ..default() }</code>.</li>
+          <li><strong><code>BorderColor::all(color)</code>:</strong> Because Bevy 0.20 supports individual top/right/bottom/left border colors, use <code>BorderColor::all(...)</code> to color all four sides at once!</li>
+          <li><strong><code>TextFont::from_font_size(18.0)</code>:</strong> Converts an <code>f32</code> pixel height into Bevy 0.20's <code>FontSize::Px(18.0)</code> cleanly via <code>Into&lt;FontSize&gt;</code>.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Guided Building Blocks</h2>
+
+      <!-- Step 1 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 1</span>
+          <h3>Define HUD Marker Components &amp; <code>spawn_hud</code></h3>
+        </div>
+        <p>
+          To update specific text labels without touching static containers, tag each dynamic <code>Text</code> entity with its own marker component:
+        </p>
+        <ul class="api-list">
+          <li><code>#[derive(Component)] pub struct HudTimerText;</code></li>
+          <li><code>#[derive(Component)] pub struct HudSurvivorsText;</code></li>
+          <li>Write <code>spawn_hud(mut commands: Commands)</code> using Bevy's <code>children![...]</code> macro to spawn:
+            <ol>
+              <li>An outer full-width top bar <code>Node</code> at <code>top: Val::Px(10.0)</code> with <code>JustifyContent::Center</code> and <code>Pickable::IGNORE</code>.</li>
+              <li>An inner pill <code>Node</code> with <code>padding: UiRect::axes(Val::Px(18.0), Val::Px(8.0))</code>, <code>column_gap: Val::Px(22.0)</code>, <code>border: UiRect::all(Val::Px(1.0))</code>, <code>border_radius: BorderRadius::all(Val::Px(8.0))</code>, <code>BackgroundColor</code>, and <code>BorderColor::all(...)</code>.</li>
+              <li>Two child <code>Text</code> entities inside the pill—one marked <code>HudTimerText</code> and one marked <code>HudSurvivorsText</code>!</li>
+            </ol>
+          </li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 1 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">#[derive(Component)]
+pub struct HudTimerText;
+
+#[derive(Component)]
+pub struct HudSurvivorsText;
+
+fn spawn_hud(mut commands: Commands) {
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(10.0),
+            left: Val::Px(0.0),
+            width: Val::Percent(100.0),
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        Pickable::IGNORE,
+        children![(
+            Node {
+                padding: UiRect::axes(Val::Px(18.0), Val::Px(8.0)),
+                column_gap: Val::Px(22.0),
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.08, 0.10, 0.14, 0.92)),
+            BorderColor::all(Color::srgb(0.22, 0.28, 0.38)),
+            children![
+                (
+                    HudTimerText,
+                    Text::new("IT ELIMINATED IN: 10.0s"),
+                    TextFont::from_font_size(18.0),
+                    TextColor(Color::srgb(0.92, 0.95, 0.98)),
+                ),
+                (
+                    HudSurvivorsText,
+                    Text::new("SURVIVORS: 6"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(0.55, 0.62, 0.70)),
+                ),
+            ],
+        )],
+    ));
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concept: Declarative Macros (<code>children![...]</code>)</strong>
+              <ul>
+                <li>Notice the <code>!</code> in <code>children![...]</code>! Unlike regular Rust functions (which require every argument to have the exact same type), macros expand at compile time into tuple/relationship code—letting Child 1 and Child 2 have different component tuples while automatically linking them to their parent via Bevy's <code>ChildOf</code> / <code>Children</code> relationship!</li>
+                <li>Also note the parentheses in <code>children![( Node { ... }, ... )]</code> when spawning a single tuple child vs. multiple comma-separated tuple children.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 2</span>
+          <h3>Write <code>update_hud</code> in the <code>Update</code> Schedule</h3>
+        </div>
+        <p>
+          Read <code>Res&lt;RoundPhase&gt;</code>, <code>Res&lt;MatchOutcome&gt;</code>, and the count of surviving <code>Character</code> entities to update your two HUD labels every frame:
+        </p>
+        <ul class="api-list">
+          <li>Use <code>timer.remaining_secs()</code> formatted to 1 decimal place: <code>format!("IT ELIMINATED IN: {:.1}s", secs)</code>.</li>
+          <li>Turn <code>TextColor</code> urgent coral-red when <code>ActiveTag</code> drops below <code>3.0s</code>, or warm gold during the <code>5.0s</code> <code>FlashingNext</code> countdown!</li>
+          <li>Remember: because <code>HudTimerText</code> and <code>HudSurvivorsText</code> both mutate <code>&amp;mut Text</code>, add <code>Without&lt;HudSurvivorsText&gt;</code> / <code>Without&lt;HudTimerText&gt;</code> filters so Bevy knows the two queries never touch the same entity!</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 2 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn update_hud(
+    phase: Res&lt;RoundPhase&gt;,
+    outcome: Res&lt;MatchOutcome&gt;,
+    characters: Query&lt;(), With&lt;Character&gt;&gt;,
+    mut timer_q: Query&lt;(&amp;mut Text, &amp;mut TextColor), (With&lt;HudTimerText&gt;, Without&lt;HudSurvivorsText&gt;)&gt;,
+    mut surv_q: Query&lt;&amp;mut Text, (With&lt;HudSurvivorsText&gt;, Without&lt;HudTimerText&gt;)&gt;,
+) {
+    let survivor_count = characters.iter().count();
+
+    for mut text in &amp;mut surv_q {
+        text.0 = format!("SURVIVORS: {survivor_count}");
+    }
+
+    for (mut text, mut color) in &amp;mut timer_q {
+        match *outcome {
+            MatchOutcome::PlayerEliminated => {
+                text.0 = "GAME OVER — ELIMINATED!".to_string();
+                color.0 = Color::srgb(0.97, 0.32, 0.29);
+                return;
+            }
+            MatchOutcome::PlayerWon => {
+                text.0 = "VICTORY — YOU SURVIVED!".to_string();
+                color.0 = Color::srgb(0.25, 0.85, 0.45);
+                return;
+            }
+            MatchOutcome::Ongoing => {}
+        }
+
+        match &amp;*phase {
+            RoundPhase::ActiveTag { timer } => {
+                let rem = timer.remaining_secs();
+                text.0 = format!("IT ELIMINATED IN: {rem:.1}s");
+                color.0 = if rem &lt;= 3.0 {
+                    Color::srgb(0.98, 0.35, 0.30) // Urgent red!
+                } else {
+                    Color::srgb(0.92, 0.95, 0.98)
+                };
+            }
+            RoundPhase::FlashingNext { timer, .. } => {
+                let rem = timer.remaining_secs();
+                text.0 = format!("NEXT IT FLASHING: {rem:.1}s");
+                color.0 = Color::srgb(1.0, 0.85, 0.32); // Warning gold!
+            }
+        }
+    }
+}</code></pre>
+            <p style="margin-top: 10px;">Add <code>spawn_hud</code> to <code>Startup</code> and <code>update_hud</code> to <code>Update</code>:</p>
+<pre><code class="language-rust">        .add_systems(Startup, (setup_camera, spawn_arena, spawn_player, spawn_npcs, spawn_hud))
+        .add_systems(Update, (sync_character_colors, update_hud))</code></pre>
+            <div class="rust-notes">
+              <strong>Rust &amp; Bevy Concepts Inside This Snippet:</strong>
+              <ul>
+                <li><strong>Disjoint Filters (<code>Without&lt;...&gt;</code>):</strong> Why would Bevy panic at startup if you wrote two <code>Query&lt;&amp;mut Text, With&lt;A&gt;&gt;</code> and <code>Query&lt;&amp;mut Text, With&lt;B&gt;&gt;</code> without <code>Without</code>? Because in theory, a single entity <em>could</em> carry both <code>A</code> and <code>B</code>! Adding <code>Without&lt;HudSurvivorsText&gt;</code> proves at the type level that the two queries are 100% disjoint!</li>
+                <li><strong>Zero-Data Query <code>Query&lt;(), With&lt;Character&gt;&gt;</code>:</strong> Passing the empty unit tuple <code>()</code> as query data counts matching entities without reading a single byte of component fields!</li>
+                <li><strong>Inline Format Capture (<code>format!("{rem:.1}s")</code>):</strong> Modern Rust lets you reference local variables directly inside <code>{...}</code> format braces.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="checklist-card">
+        <h3>Verify Before Moving On (<code>cargo run</code>)</h3>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>A sleek centered HUD bar appears above the top arena wall showing <code>IT ELIMINATED IN: 10.0s</code> and <code>SURVIVORS: 6</code>.</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>The countdown resets to <code>10.0s</code> whenever a tag happens, turns red under <code>3.0s</code>, and switches to gold <code>NEXT IT FLASHING: 5.0s</code> after each elimination!</span>
+        </label>
+      </div>
+    </section>
+
+    <footer class="lesson-footer">
+      <a class="footer-nav-link" href="05-elimination-and-flashing.html">
+        <span>← Previous Lesson</span>
+        <strong>05: 10s Elimination &amp; 5s Flash</strong>
+      </a>
+      <a class="footer-nav-link" href="07-menus-pause-and-game-over.html" style="text-align: right;">
+        <span>Next Lesson →</span>
+        <strong>07: Menus, Esc Pause &amp; Game Over</strong>
+      </a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const rng = document.getElementById("rngTime");
+      const chk = document.getElementById("chkFlashMode");
+      const timerEl = document.getElementById("hudMockTimer");
+      const urgEl = document.getElementById("roUrgency");
+      if (!rng) return;
+
+      function sync() {
+        const flash = chk.checked;
+        if (flash && parseFloat(rng.value) > 5.0) rng.value = "5.0";
+        rng.max = flash ? "5.0" : "10.0";
+        const v = parseFloat(rng.value);
+
+        if (flash) {
+          timerEl.textContent = `NEXT IT FLASHING: ${v.toFixed(1)}s`;
+          timerEl.style.color = "#ffd952";
+          urgEl.textContent = "Flashing Grace (Gold)";
+          urgEl.style.color = "var(--amber)";
+        } else if (v <= 3.0) {
+          timerEl.textContent = `IT ELIMINATED IN: ${v.toFixed(1)}s`;
+          timerEl.style.color = "#fa594d";
+          urgEl.textContent = "Critical <= 3.0s (Red)";
+          urgEl.style.color = "var(--accent)";
+        } else {
+          timerEl.textContent = `IT ELIMINATED IN: ${v.toFixed(1)}s`;
+          timerEl.style.color = "#ebeff5";
+          urgEl.textContent = "Normal";
+          urgEl.style.color = "var(--text)";
+        }
+      }
+
+      rng.addEventListener("input", sync);
+      chk.addEventListener("change", sync);
+      sync();
+    })();
+  </script>
+</body>
+</html>

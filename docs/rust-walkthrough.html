@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rust Walkthrough — src/main.rs</title>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --surface: #151a22;
+      --surface-2: #1c222d;
+      --border: #262e3d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #f78166;
+      --accent-soft: rgba(247, 129, 102, 0.14);
+      --accent-border: rgba(247, 129, 102, 0.45);
+      --highlight-bg: rgba(88, 166, 255, 0.12);
+      --highlight-border: rgba(88, 166, 255, 0.55);
+      --code-bg: #0b0e13;
+
+      /* Syntax colors (dark) */
+      --syn-kw: #ff7b72;
+      --syn-type: #ffa657;
+      --syn-fn: #d2a8ff;
+      --syn-str: #a5d6ff;
+      --syn-num: #79c0ff;
+      --syn-macro: #7ee787;
+      --syn-attr: #8b949e;
+      --syn-op: #c9d1d9;
+
+      /* Concept tag colors */
+      --c-modules: #79c0ff;
+      --c-ownership: #ff7b72;
+      --c-types: #ffa657;
+      --c-traits: #d2a8ff;
+      --c-macros: #7ee787;
+      --c-expr: #f2cc60;
+      --c-deref: #56d4dd;
+    }
+
+    [data-theme="light"] {
+      --bg: #f6f8fa;
+      --surface: #ffffff;
+      --surface-2: #f0f3f7;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --text-muted: #59636e;
+      --accent: #cf4b27;
+      --accent-soft: rgba(207, 75, 39, 0.1);
+      --accent-border: rgba(207, 75, 39, 0.4);
+      --highlight-bg: rgba(9, 105, 218, 0.08);
+      --highlight-border: rgba(9, 105, 218, 0.45);
+      --code-bg: #ffffff;
+
+      --syn-kw: #cf222e;
+      --syn-type: #953800;
+      --syn-fn: #8250df;
+      --syn-str: #0a3069;
+      --syn-num: #0550ae;
+      --syn-macro: #116329;
+      --syn-attr: #6e7781;
+      --syn-op: #24292f;
+
+      --c-modules: #0550ae;
+      --c-ownership: #cf222e;
+      --c-types: #953800;
+      --c-traits: #8250df;
+      --c-macros: #116329;
+      --c-expr: #9a6700;
+      --c-deref: #0969da;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .kbd-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .btn {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn:hover {
+      border-color: var(--accent-border);
+      background: var(--accent-soft);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+
+    .filter-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-right: 4px;
+      white-space: nowrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .pill:hover {
+      color: var(--text);
+      border-color: var(--text-muted);
+    }
+
+    .pill.active {
+      color: var(--text);
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
+    }
+
+    .pill .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .pill .count {
+      font-size: 11px;
+      opacity: 0.7;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    /* Main Split Pane */
+    main {
+      display: grid;
+      grid-template-columns: minmax(420px, 1.05fr) minmax(380px, 0.95fr);
+      flex: 1;
+      min-height: 0;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: 48vh 1fr;
+      }
+      .kbd-hint { display: none; }
+    }
+
+    /* Left Code Pane */
+    .code-pane {
+      display: flex;
+      flex-direction: column;
+      background: var(--code-bg);
+      border-right: 1px solid var(--border);
+      min-height: 0;
+    }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .file-path {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .code-scroll {
+      overflow: auto;
+      flex: 1;
+      padding: 12px 0 32px;
+    }
+
+    .code-line {
+      display: flex;
+      align-items: baseline;
+      padding: 2px 16px 2px 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      border-left: 3px solid transparent;
+      transition: background 0.1s, border-color 0.1s;
+    }
+
+    .code-line.annotated {
+      cursor: pointer;
+    }
+
+    .code-line.annotated:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    [data-theme="light"] .code-line.annotated:hover {
+      background: rgba(0, 0, 0, 0.035);
+    }
+
+    .code-line.filter-match {
+      background: var(--highlight-bg);
+      border-left-color: var(--highlight-border);
+    }
+
+    .code-line.filter-dim {
+      opacity: 0.35;
+    }
+
+    .code-line.selected {
+      background: var(--accent-soft) !important;
+      border-left-color: var(--accent) !important;
+      opacity: 1 !important;
+    }
+
+    .ln {
+      width: 44px;
+      text-align: right;
+      padding-right: 14px;
+      color: var(--text-muted);
+      user-select: none;
+      flex-shrink: 0;
+      font-size: 12px;
+      opacity: 0.65;
+    }
+
+    .code-line.selected .ln {
+      color: var(--accent);
+      opacity: 1;
+      font-weight: 600;
+    }
+
+    .code-text {
+      white-space: pre;
+      flex: 1;
+    }
+
+    .line-dots {
+      display: inline-flex;
+      gap: 4px;
+      margin-left: 10px;
+      align-self: center;
+      flex-shrink: 0;
+    }
+
+    .line-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      opacity: 0.75;
+    }
+
+    /* Syntax classes */
+    .kw { color: var(--syn-kw); }
+    .ty { color: var(--syn-type); }
+    .fn { color: var(--syn-fn); }
+    .str { color: var(--syn-str); }
+    .num { color: var(--syn-num); }
+    .mac { color: var(--syn-macro); }
+    .attr { color: var(--syn-attr); }
+
+    /* Right Inspector Pane */
+    .inspector-pane {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      min-height: 0;
+    }
+
+    .inspector-body {
+      overflow-y: auto;
+      flex: 1;
+      padding: 20px 24px 32px;
+    }
+
+    .line-banner {
+      margin-bottom: 18px;
+    }
+
+    .line-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .line-title {
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+
+    .line-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
+      font-weight: 600;
+    }
+
+    .snippet-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      overflow-x: auto;
+      white-space: pre;
+      margin-bottom: 12px;
+    }
+
+    .line-summary {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-muted);
+      margin: 0 0 12px;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .tag:hover {
+      border-color: var(--text-muted);
+    }
+
+    /* Concept Cards */
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .token-chip {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .card-concept {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 13.5px;
+      line-height: 1.62;
+      color: var(--text);
+    }
+
+    .card code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
+    .callout {
+      margin-top: 10px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      background: var(--surface-2);
+      border-left: 3px solid var(--accent);
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+
+    .callout strong {
+      color: var(--text);
+    }
+
+    /* Inspector Footer Nav */
+    .inspector-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .nav-btns {
+      display: flex;
+      gap: 8px;
+    }
+
+    @media print {
+      .app { height: auto; }
+      header, .filter-bar, .inspector-footer { display: none; }
+      main { display: block; }
+      .code-pane { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="brand-badge">rs</div>
+        <div>
+          <h1>Rust Interactive Walkthrough</h1>
+          <p>Line-by-line syntax &amp; language features in <code>src/main.rs</code> (Bevy 0.20 · Rust 2024)</p>
+        </div>
+      </div>
+      <div class="header-controls">
+        <div class="kbd-hint">
+          <span>Navigate:</span>
+          <kbd>↑</kbd><kbd>↓</kbd> or <kbd>j</kbd><kbd>k</kbd>
+        </div>
+        <button class="btn" id="themeToggle" type="button">Light theme</button>
+      </div>
+    </header>
+
+    <div class="filter-bar" id="filterBar">
+      <span class="filter-label">Concepts</span>
+    </div>
+
+    <main>
+      <section class="code-pane" aria-label="Source code">
+        <div class="pane-header">
+          <span class="file-path">src/main.rs</span>
+          <span id="filterStatus">Click any highlighted line to inspect</span>
+        </div>
+        <div class="code-scroll" id="codeContainer"></div>
+      </section>
+
+      <section class="inspector-pane" aria-label="Line explanation">
+        <div class="pane-header">
+          <span>Explanation</span>
+          <span id="sectionLabel"></span>
+        </div>
+        <div class="inspector-body" id="inspectorBody"></div>
+        <div class="inspector-footer">
+          <span class="progress-text" id="progressText"></span>
+          <div class="nav-btns">
+            <button class="btn" id="prevBtn" type="button">← Previous</button>
+            <button class="btn" id="nextBtn" type="button">Next →</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const CONCEPTS = {
+      modules:   { label: "Modules & Paths",        color: "var(--c-modules)" },
+      ownership: { label: "Ownership & Borrowing",  color: "var(--c-ownership)" },
+      types:     { label: "Types & Structs",        color: "var(--c-types)" },
+      traits:    { label: "Traits & Generics",      color: "var(--c-traits)" },
+      macros:    { label: "Macros & Attributes",    color: "var(--c-macros)" },
+      expr:      { label: "Expressions & Control",  color: "var(--c-expr)" },
+      deref:     { label: "Smart Pointers & Deref", color: "var(--c-deref)" }
+    };
+
+    // Exact source of src/main.rs (lines 1..54)
+    const SOURCE_LINES = [
+      `use bevy::{curve::derivatives, prelude::*};`,
+      ``,
+      `fn main() {`,
+      `    App::new()`,
+      `        .add_plugins(DefaultPlugins)`,
+      `        .add_plugins(HelloPlugin)`,
+      `        .run();`,
+      `}`,
+      ``,
+      `pub struct HelloPlugin;`,
+      ``,
+      `impl Plugin for HelloPlugin {`,
+      `    fn build(&self, app: &mut App) {`,
+      `        app.insert_resource(GreetTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));`,
+      `        app.add_systems(Startup, add_people);`,
+      `        app.add_systems(Update, (update_people, greet_people).chain());`,
+      `    }`,
+      `}`,
+      ``,
+      `#[derive(Component)]`,
+      `struct Person;`,
+      ``,
+      `#[derive(Component)]`,
+      `struct Name(String);`,
+      ``,
+      `fn add_people(mut commands: Commands) {`,
+      `    commands.spawn((Person, Name("Elaina Proctor".to_string())));`,
+      `    commands.spawn((Person, Name("Renzo Hume".to_string())));`,
+      `    commands.spawn((Person, Name("Zayna Nieves".to_string())));`,
+      `}`,
+      ``,
+      `fn update_people(mut query: Query<&mut Name, With<Person>>) {`,
+      `    for mut name in &mut query {`,
+      `        if name.0 == "Elaina Proctor" {`,
+      `            name.0 = "Elaina Hume".to_string();`,
+      `            break;`,
+      `        }`,
+      `    }`,
+      `}`,
+      ``,
+      `#[derive(Resource)]`,
+      `struct GreetTimer(Timer);`,
+      ``,
+      `fn greet_people(time: Res<Time>, mut timer: ResMut<GreetTimer>, query: Query<&Name, With<Person>>) {`,
+      `    if timer.0.tick(time.delta()).just_finished() {`,
+      `        for name in &query {`,
+      `            println!("hello {}", name.0)`,
+      `        }`,
+      `    }`,
+      `}`,
+      ``,
+      `fn hello_world() {`,
+      `    println!("hello world!")`,
+      `}`
+    ];
+
+    // Pre-highlighted HTML for each line (keeps rendering fast & exact)
+    const HIGHLIGHTED_LINES = [
+      `<span class="kw">use</span> bevy::{curve::derivatives, prelude::*};`,
+      ``,
+      `<span class="kw">fn</span> <span class="fn">main</span>() {`,
+      `    <span class="ty">App</span>::<span class="fn">new</span>()`,
+      `        .<span class="fn">add_plugins</span>(<span class="ty">DefaultPlugins</span>)`,
+      `        .<span class="fn">add_plugins</span>(<span class="ty">HelloPlugin</span>)`,
+      `        .<span class="fn">run</span>();`,
+      `}`,
+      ``,
+      `<span class="kw">pub</span> <span class="kw">struct</span> <span class="ty">HelloPlugin</span>;`,
+      ``,
+      `<span class="kw">impl</span> <span class="ty">Plugin</span> <span class="kw">for</span> <span class="ty">HelloPlugin</span> {`,
+      `    <span class="kw">fn</span> <span class="fn">build</span>(&amp;<span class="kw">self</span>, app: &amp;<span class="kw">mut</span> <span class="ty">App</span>) {`,
+      `        app.<span class="fn">insert_resource</span>(<span class="ty">GreetTimer</span>(<span class="ty">Timer</span>::<span class="fn">from_seconds</span>(<span class="num">2.0</span>, <span class="ty">TimerMode</span>::<span class="ty">Repeating</span>)));`,
+      `        app.<span class="fn">add_systems</span>(<span class="ty">Startup</span>, add_people);`,
+      `        app.<span class="fn">add_systems</span>(<span class="ty">Update</span>, (update_people, greet_people).<span class="fn">chain</span>());`,
+      `    }`,
+      `}`,
+      ``,
+      `<span class="attr">#[derive(<span class="ty">Component</span>)]</span>`,
+      `<span class="kw">struct</span> <span class="ty">Person</span>;`,
+      ``,
+      `<span class="attr">#[derive(<span class="ty">Component</span>)]</span>`,
+      `<span class="kw">struct</span> <span class="ty">Name</span>(<span class="ty">String</span>);`,
+      ``,
+      `<span class="kw">fn</span> <span class="fn">add_people</span>(<span class="kw">mut</span> commands: <span class="ty">Commands</span>) {`,
+      `    commands.<span class="fn">spawn</span>((<span class="ty">Person</span>, <span class="ty">Name</span>(<span class="str">"Elaina Proctor"</span>.<span class="fn">to_string</span>())));`,
+      `    commands.<span class="fn">spawn</span>((<span class="ty">Person</span>, <span class="ty">Name</span>(<span class="str">"Renzo Hume"</span>.<span class="fn">to_string</span>())));`,
+      `    commands.<span class="fn">spawn</span>((<span class="ty">Person</span>, <span class="ty">Name</span>(<span class="str">"Zayna Nieves"</span>.<span class="fn">to_string</span>())));`,
+      `}`,
+      ``,
+      `<span class="kw">fn</span> <span class="fn">update_people</span>(<span class="kw">mut</span> query: <span class="ty">Query</span>&lt;&amp;<span class="kw">mut</span> <span class="ty">Name</span>, <span class="ty">With</span>&lt;<span class="ty">Person</span>&gt;&gt;) {`,
+      `    <span class="kw">for</span> <span class="kw">mut</span> name <span class="kw">in</span> &amp;<span class="kw">mut</span> query {`,
+      `        <span class="kw">if</span> name.<span class="num">0</span> == <span class="str">"Elaina Proctor"</span> {`,
+      `            name.<span class="num">0</span> = <span class="str">"Elaina Hume"</span>.<span class="fn">to_string</span>();`,
+      `            <span class="kw">break</span>;`,
+      `        }`,
+      `    }`,
+      `}`,
+      ``,
+      `<span class="attr">#[derive(<span class="ty">Resource</span>)]</span>`,
+      `<span class="kw">struct</span> <span class="ty">GreetTimer</span>(<span class="ty">Timer</span>);`,
+      ``,
+      `<span class="kw">fn</span> <span class="fn">greet_people</span>(time: <span class="ty">Res</span>&lt;<span class="ty">Time</span>&gt;, <span class="kw">mut</span> timer: <span class="ty">ResMut</span>&lt;<span class="ty">GreetTimer</span>&gt;, query: <span class="ty">Query</span>&lt;&amp;<span class="ty">Name</span>, <span class="ty">With</span>&lt;<span class="ty">Person</span>&gt;&gt;) {`,
+      `    <span class="kw">if</span> timer.<span class="num">0</span>.<span class="fn">tick</span>(time.<span class="fn">delta</span>()).<span class="fn">just_finished</span>() {`,
+      `        <span class="kw">for</span> name <span class="kw">in</span> &amp;query {`,
+      `            <span class="mac">println!</span>(<span class="str">"hello {}"</span>, name.<span class="num">0</span>)`,
+      `        }`,
+      `    }`,
+      `}`,
+      ``,
+      `<span class="kw">fn</span> <span class="fn">hello_world</span>() {`,
+      `    <span class="mac">println!</span>(<span class="str">"hello world!"</span>)`,
+      `}`
+    ];
+
+    const ANNOTATIONS = {
+      1: {
+        section: "Imports",
+        title: "Use trees, path resolution & preludes",
+        summary: "Brings items from the external `bevy` crate into local scope so you don't have to write `bevy::prelude::App` everywhere.",
+        concepts: ["modules"],
+        items: [
+          {
+            token: "use bevy::...",
+            concept: "modules",
+            heading: "Path separator (::) & crate roots",
+            body: "<code>::</code> navigates crates, modules, types, and enum variants (similar to C++ namespaces). <code>bevy</code> is an external crate declared under <code>[dependencies]</code> in <code>Cargo.toml</code>."
+          },
+          {
+            token: "{curve::derivatives, prelude::*}",
+            concept: "modules",
+            heading: "Grouped imports (use trees)",
+            body: "Curly braces let you factor out a common path prefix. This single line is equivalent to two separate <code>use</code> statements. Note that <code>curve::derivatives</code> isn't actually used in this file—the compiler will flag it as an unused import."
+          },
+          {
+            token: "prelude::*",
+            concept: "modules",
+            heading: "Glob imports & the Prelude convention",
+            body: "<code>*</code> imports every public item from <code>bevy::prelude</code>. Glob imports are generally discouraged in Rust except for <code>prelude</code> modules, which crates intentionally curate to re-export their essential types and traits."
+          }
+        ]
+      },
+      3: {
+        section: "Entry Point",
+        title: "Function declarations & the unit type ()",
+        summary: "Declares the binary's entry point. Like C/Go/Java, execution starts in `main`.",
+        concepts: ["expr", "types"],
+        items: [
+          {
+            token: "fn main()",
+            concept: "expr",
+            heading: "Implicit unit return type",
+            body: "Functions use <code>fn name(params) -> ReturnType</code>. Omitting <code>-> ReturnType</code> means the function returns <code>()</code>—the <strong>unit type</strong> (an empty 0-tuple). Unlike <code>void</code> in C/Java, <code>()</code> is a real zero-sized value, which makes generic code much cleaner."
+          }
+        ]
+      },
+      4: {
+        section: "Entry Point",
+        title: "Associated functions (no constructors)",
+        summary: "Creates a new `App` instance to start a builder chain.",
+        concepts: ["types", "traits"],
+        items: [
+          {
+            token: "App::new()",
+            concept: "types",
+            heading: "Associated functions vs. methods",
+            body: "Rust has no <code>new</code> keyword or special constructor syntax. <code>App::new()</code> is simply an <strong>associated function</strong> (like a static method) defined inside <code>impl App</code> that returns an <code>App</code>. Calling with <code>::</code> means it doesn't take a <code>self</code> receiver."
+          }
+        ]
+      },
+      5: {
+        section: "Entry Point",
+        title: "Method chaining & unit struct values",
+        summary: "Registers Bevy's built-in plugins on the `App` using the builder pattern.",
+        concepts: ["types", "ownership"],
+        items: [
+          {
+            token: ".add_plugins(...)",
+            concept: "ownership",
+            heading: "Builder pattern via &mut Self",
+            body: "<code>add_plugins</code> takes <code>&mut self</code> and returns <code>&mut Self</code>, letting you chain calls directly onto the temporary <code>App</code> created on line 4 without binding an intermediate variable."
+          },
+          {
+            token: "DefaultPlugins",
+            concept: "types",
+            heading: "Unit struct passed as a value",
+            body: "<code>DefaultPlugins</code> is a <strong>unit-like struct</strong> (a struct with no fields). Because it has no data to initialize, its type name is also a valid value expression—no <code>()</code> or <code>{}</code> needed."
+          }
+        ]
+      },
+      6: {
+        section: "Entry Point",
+        title: "Passing your own plugin",
+        summary: "Registers your custom `HelloPlugin` defined on line 10.",
+        concepts: ["types", "traits"],
+        items: [
+          {
+            token: "HelloPlugin",
+            concept: "traits",
+            heading: "Trait-bounded polymorphism",
+            body: "<code>add_plugins</code> accepts any type implementing Bevy's <code>Plugins</code> trait (which is automatically implemented for any single type implementing <code>Plugin</code>). Because line 12 implements <code>Plugin for HelloPlugin</code>, this type-checks at compile time with zero dynamic dispatch overhead."
+          }
+        ]
+      },
+      7: {
+        section: "Entry Point",
+        title: "Statements vs. expressions (trailing semicolon)",
+        summary: "Starts the Bevy event loop and discards its return value.",
+        concepts: ["expr"],
+        items: [
+          {
+            token: ".run();",
+            concept: "expr",
+            heading: "Why the semicolon matters",
+            body: "<code>.run()</code> actually returns an <code>AppExit</code> value, not <code>()</code>. In Rust, adding a trailing <code>;</code> turns an expression into a statement that evaluates to <code>()</code>. If you removed the <code>;</code> here, the compiler would reject it because <code>main()</code> expects to return <code>()</code>, not <code>AppExit</code>.",
+            callout: "<strong>Mental model:</strong> In Rust, almost everything is an expression. A semicolon literally means \"evaluate this for its side effects and discard the result.\""
+          }
+        ]
+      },
+      10: {
+        section: "Plugin Definition",
+        title: "Visibility (`pub`) & unit-like structs",
+        summary: "Declares a public, zero-sized struct to act as a plugin marker.",
+        concepts: ["modules", "types"],
+        items: [
+          {
+            token: "pub",
+            concept: "modules",
+            heading: "Private by default",
+            body: "Every item in Rust (structs, functions, fields, modules) is <strong>private by default</strong>—accessible only within the current module and its submodules. <code>pub</code> exposes <code>HelloPlugin</code> outside this module."
+          },
+          {
+            token: "struct HelloPlugin;",
+            concept: "types",
+            heading: "Unit-like structs (Zero-Sized Types)",
+            body: "A struct with no fields ends with a semicolon instead of braces. It is a <strong>Zero-Sized Type (ZST)</strong>—it occupies 0 bytes in memory at runtime and exists purely to carry trait implementations or act as a compile-time marker."
+          }
+        ]
+      },
+      12: {
+        section: "Plugin Definition",
+        title: "Trait implementation blocks",
+        summary: "Implements Bevy's `Plugin` trait for `HelloPlugin`.",
+        concepts: ["traits"],
+        items: [
+          {
+            token: "impl Plugin for HelloPlugin",
+            concept: "traits",
+            heading: "Composition over inheritance",
+            body: "Rust has no classes or class inheritance. Instead, shared behavior is defined with <strong>traits</strong> (closest to interfaces in Go/Java or typeclasses in Haskell). Data layout (<code>struct</code>) and behavior (<code>impl</code>) are always separate blocks.",
+            callout: "<strong>Coherence / Orphan Rule:</strong> You can implement a trait for a type as long as either the trait OR the type is local to your crate. Here <code>HelloPlugin</code> is local, so you can implement Bevy's <code>Plugin</code> trait for it."
+          }
+        ]
+      },
+      13: {
+        section: "Plugin Definition",
+        title: "Method receivers (`&self`) & mutable borrows (`&mut`)",
+        summary: "Defines the required `build` method from the `Plugin` trait.",
+        concepts: ["ownership", "traits"],
+        items: [
+          {
+            token: "&self",
+            concept: "ownership",
+            heading: "Immutable receiver borrow",
+            body: "Shorthand for <code>self: &Self</code>. In Rust, methods explicitly declare how they take the receiver: <code>&self</code> (read-only borrow), <code>&mut self</code> (mutable borrow), or <code>self</code> (takes ownership / consumes the value)."
+          },
+          {
+            token: "app: &mut App",
+            concept: "ownership",
+            heading: "Exclusive mutable reference",
+            body: "Parameters are written <code>name: Type</code>. <code>&mut App</code> is a mutable reference (borrow) to an <code>App</code>. Rust's borrow checker enforces <strong>Aliasing XOR Mutability</strong>: while <code>app</code> is mutably borrowed, no other reference (mutable or immutable) to that <code>App</code> can exist.",
+            callout: "<strong>Why this matters:</strong> This single rule prevents data races and iterator invalidation at compile time—with no garbage collector."
+          }
+        ]
+      },
+      14: {
+        section: "Plugin Definition",
+        title: "Tuple struct construction, enums & float inference",
+        summary: "Creates a repeating 2-second timer wrapped in `GreetTimer` and transfers ownership into `App`.",
+        concepts: ["types", "ownership"],
+        items: [
+          {
+            token: "2.0",
+            concept: "types",
+            heading: "Type inference on numeric literals",
+            body: "Rust has explicit float sizes (<code>f32</code>, <code>f64</code>), but you rarely need suffixes like <code>2.0f32</code>. The compiler infers <code>f32</code> from <code>Timer::from_seconds</code>'s signature."
+          },
+          {
+            token: "TimerMode::Repeating",
+            concept: "types",
+            heading: "Enum variants",
+            body: "Rust enums are algebraic data types (tagged unions), accessed via <code>EnumName::Variant</code>. Here <code>Repeating</code> is a unit variant with no payload."
+          },
+          {
+            token: "GreetTimer(...)",
+            concept: "ownership",
+            heading: "Move semantics on ownership transfer",
+            body: "Constructs the <code>GreetTimer</code> tuple struct (defined on line 42) and <strong>moves</strong> ownership into <code>app.insert_resource(...)</code>. After this call, <code>App</code> owns the value and is responsible for freeing it when the app drops."
+          }
+        ]
+      },
+      15: {
+        section: "Plugin Definition",
+        title: "Functions as first-class values",
+        summary: "Schedules `add_people` to run once at application startup.",
+        concepts: ["traits", "types"],
+        items: [
+          {
+            token: "Startup",
+            concept: "types",
+            heading: "Marker schedule label",
+            body: "Another unit-like struct identifying Bevy's startup schedule."
+          },
+          {
+            token: "add_people",
+            concept: "traits",
+            heading: "Passing a function item (no parentheses)",
+            body: "Passing <code>add_people</code> without <code>()</code> passes the function itself. Each function in Rust has its own unique, zero-sized <strong>function item type</strong>. Bevy uses generic trait implementations over functions to inspect their parameter types (like <code>Commands</code>, <code>Query</code>, <code>Res</code>) and wire up dependency injection purely at compile time."
+          }
+        ]
+      },
+      16: {
+        section: "Plugin Definition",
+        title: "Tuples & extension traits on tuples",
+        summary: "Schedules `update_people` and `greet_people` to run sequentially every frame.",
+        concepts: ["types", "traits"],
+        items: [
+          {
+            token: "(update_people, greet_people)",
+            concept: "types",
+            heading: "Heterogeneous tuples",
+            body: "Parentheses with commas form a fixed-length <strong>tuple</strong>. Unlike arrays, every element of a tuple can have a completely different type (and here each function item has its own distinct type)."
+          },
+          {
+            token: ".chain()",
+            concept: "traits",
+            heading: "Calling methods on a tuple via traits",
+            body: "How can a built-in tuple have a <code>.chain()</code> method? In Rust, any crate can define a trait and implement it for tuples (e.g., <code>impl&lt;A, B&gt; IntoScheduleConfigs for (A, B)</code>). As long as that trait is in scope (via <code>prelude::*</code>), its methods become callable directly on the tuple!"
+          }
+        ]
+      },
+      20: {
+        section: "Components",
+        title: "Derive attributes (compile-time codegen)",
+        summary: "Automatically generates the `Component` trait implementation for `Person`.",
+        concepts: ["macros", "traits"],
+        items: [
+          {
+            token: "#[derive(Component)]",
+            concept: "macros",
+            heading: "Outer attributes & derive procedural macros",
+            body: "<code>#[...]</code> is an <strong>attribute</strong> attached to the item directly below it. <code>derive(...)</code> runs a compile-time <strong>procedural macro</strong> that receives the syntax tree of <code>struct Person;</code> and emits a full <code>impl Component for Person { ... }</code> block before type-checking.",
+            callout: "<strong>No runtime reflection:</strong> Rust doesn't have Java/C#-style runtime reflection. Derive macros are how Rust achieves ergonomic, zero-runtime-cost boilerplate generation."
+          }
+        ]
+      },
+      21: {
+        section: "Components",
+        title: "Marker component (unit struct)",
+        summary: "Defines a private zero-sized `Person` component used to tag entities.",
+        concepts: ["types", "modules"],
+        items: [
+          {
+            token: "struct Person;",
+            concept: "types",
+            heading: "Zero-overhead tagging",
+            body: "No <code>pub</code> means private to this module. Because it's a zero-sized unit struct, attaching <code>Person</code> to thousands of entities stores no per-entity payload bytes."
+          }
+        ]
+      },
+      23: {
+        section: "Components",
+        title: "Deriving `Component` on a data struct",
+        summary: "Generates `impl Component for Name` at compile time.",
+        concepts: ["macros", "traits"],
+        items: [
+          {
+            token: "#[derive(Component)]",
+            concept: "macros",
+            heading: "Same derive macro, different struct shape",
+            body: "Derive macros work on unit structs, tuple structs, named-field structs, and enums alike."
+          }
+        ]
+      },
+      24: {
+        section: "Components",
+        title: "Tuple structs, Newtypes & `String`",
+        summary: "Wraps a heap-allocated `String` in a distinct `Name` type.",
+        concepts: ["types", "ownership"],
+        items: [
+          {
+            token: "struct Name(String);",
+            concept: "types",
+            heading: "The Newtype pattern",
+            body: "A <strong>tuple struct</strong> has unnamed positional fields accessed as <code>.0</code>, <code>.1</code>, etc. Wrapping a single type like <code>String</code> in <code>struct Name(String)</code> is a classic Rust idiom called the <strong>newtype pattern</strong>: it gives you a distinct compile-time type with <em>zero</em> runtime overhead (identical memory layout to <code>String</code>)."
+          },
+          {
+            token: "String",
+            concept: "ownership",
+            heading: "Owned heap string vs. borrowed &str",
+            body: "<code>String</code> is an owned, growable, heap-allocated UTF-8 buffer (like C++ <code>std::string</code>). Structs usually store owned <code>String</code>s rather than borrowed <code>&str</code> slices so the struct doesn't need lifetime annotations."
+          }
+        ]
+      },
+      26: {
+        section: "Startup System",
+        title: "Mutable parameter bindings",
+        summary: "System function that receives Bevy's `Commands` queue to spawn entities.",
+        concepts: ["ownership"],
+        items: [
+          {
+            token: "mut commands: Commands",
+            concept: "ownership",
+            heading: "Immutable by default — including parameters",
+            body: "Every binding in Rust is immutable unless marked <code>mut</code>. Because <code>commands.spawn(...)</code> takes <code>&mut self</code>, the local binding <code>commands</code> must be declared <code>mut</code>.",
+            callout: "<strong>Subtle distinction:</strong> <code>mut x: T</code> means \"I own <code>x</code> and I'm allowed to mutate my local binding.\" <code>x: &mut T</code> means \"I borrowed a mutable reference to someone else's <code>T</code>.\""
+          }
+        ]
+      },
+      27: {
+        section: "Startup System",
+        title: "Tuples as arguments & `&str` → `String` conversion",
+        summary: "Spawns an entity with both `Person` and `Name` components.",
+        concepts: ["types", "ownership"],
+        items: [
+          {
+            token: "((Person, Name(...)))",
+            concept: "types",
+            heading: "Double parentheses: passing a tuple",
+            body: "The outer <code>(...)</code> is the function call; the inner <code>(...)</code> constructs a 2-tuple <code>(Person, Name)</code> passed as a single argument. Bevy treats tuples of components as an entity <code>Bundle</code>."
+          },
+          {
+            token: "\"Elaina Proctor\".to_string()",
+            concept: "ownership",
+            heading: "String literals (&'static str) vs. String",
+            body: "A quoted string literal has type <code>&'static str</code>—an immutable, borrowed string slice baked into the compiled binary's read-only data segment. Calling <code>.to_string()</code> allocates a heap-owned <code>String</code> copy so <code>Name</code> can own it."
+          }
+        ]
+      },
+      28: {
+        section: "Startup System",
+        title: "Spawning a second entity",
+        summary: "Same pattern as line 27: spawns a `(Person, Name)` tuple.",
+        concepts: ["types", "ownership"],
+        items: [
+          {
+            token: "commands.spawn(...)",
+            concept: "ownership",
+            heading: "Ownership moves into the ECS",
+            body: "Ownership of both <code>Person</code> and the newly allocated <code>Name(String)</code> moves into Bevy's command queue."
+          }
+        ]
+      },
+      29: {
+        section: "Startup System",
+        title: "Spawning a third entity",
+        summary: "Same pattern as lines 27–28.",
+        concepts: ["types", "ownership"],
+        items: [
+          {
+            token: "commands.spawn(...)",
+            concept: "ownership",
+            heading: "Consistent ownership & zero GC",
+            body: "Each spawned <code>Name</code> owns its own heap allocation, which will be deterministically freed (dropped) if the entity is despawned or when the app exits."
+          }
+        ]
+      },
+      32: {
+        section: "Update System (Mutating)",
+        title: "Generics, mutable query access & marker filters",
+        summary: "Queries every entity that has both `Name` (mutably) and `Person`.",
+        concepts: ["traits", "ownership", "types"],
+        items: [
+          {
+            token: "Query<&mut Name, With<Person>>",
+            concept: "traits",
+            heading: "Generic type parameters (<...>)",
+            body: "<code>Query&lt;D, F&gt;</code> is parameterized by two generic types: <code>D = &mut Name</code> (what data to fetch, mutably) and <code>F = With&lt;Person&gt;</code> (a zero-sized filter constraining which entities match). Generic parameters are monomorphized at compile time (like C++ templates, but type-checked against trait bounds up front)."
+          },
+          {
+            token: "mut query: ...",
+            concept: "ownership",
+            heading: "Why `query` itself must be `mut`",
+            body: "Iterating mutably over a <code>Query</code> requires a mutable borrow of the query (<code>&mut query</code> on line 33), which in turn requires the <code>query</code> binding to be declared <code>mut</code>."
+          }
+        ]
+      },
+      33: {
+        section: "Update System (Mutating)",
+        title: "`for` loops, borrowing in iteration & `Mut<T>`",
+        summary: "Iterates over mutable handles to each matching `Name` component.",
+        concepts: ["ownership", "expr", "deref"],
+        items: [
+          {
+            token: "for ... in &mut query",
+            concept: "ownership",
+            heading: "Borrowing instead of consuming in `for` loops",
+            body: "A <code>for</code> loop desugars into <code>IntoIterator::into_iter(...)</code>. Passing <code>&mut query</code> borrows <code>query</code> mutably instead of moving/consuming it, so <code>query</code> remains usable after the loop and yields mutable items."
+          },
+          {
+            token: "mut name",
+            concept: "deref",
+            heading: "Smart pointer wrapper (Mut<Name>)",
+            body: "<code>name</code> isn't a raw <code>&mut Name</code>—it's Bevy's <code>Mut&lt;Name&gt;</code> smart pointer (which tracks change detection). Marking the loop variable <code>mut</code> allows you to mutate through it via the <code>DerefMut</code> trait."
+          }
+        ]
+      },
+      34: {
+        section: "Update System (Mutating)",
+        title: "`if` syntax, Deref coercion & `String == &str`",
+        summary: "Checks whether the entity's name matches `\"Elaina Proctor\"`.",
+        concepts: ["expr", "deref", "traits"],
+        items: [
+          {
+            token: "if name.0 == ...",
+            concept: "expr",
+            heading: "No parentheses around conditions",
+            body: "Rust omits parentheses around <code>if</code> / <code>while</code> conditions (the compiler warns if you include them) and always requires curly braces <code>{}</code>—preventing dangling-else bugs."
+          },
+          {
+            token: "name.0",
+            concept: "deref",
+            heading: "Tuple field access through Deref",
+            body: "<code>.0</code> accesses the first positional field of <code>struct Name(String)</code>. Even though <code>name</code> has type <code>Mut&lt;Name&gt;</code>, Rust's <strong>Deref coercion</strong> automatically dereferences the smart pointer to <code>Name</code> when you access fields or methods."
+          },
+          {
+            token: "== \"Elaina Proctor\"",
+            concept: "traits",
+            heading: "Cross-type equality via PartialEq",
+            body: "<code>name.0</code> is a <code>String</code>, while <code>\"Elaina Proctor\"</code> is a <code>&str</code>. Rust's standard library implements <code>PartialEq&lt;&str&gt; for String</code>, so you can compare them directly without allocating a temporary <code>String</code>."
+          }
+        ]
+      },
+      35: {
+        section: "Update System (Mutating)",
+        title: "Mutating via `DerefMut` & deterministic Drop",
+        summary: "Replaces the `String` inside `Name`, automatically freeing the old one.",
+        concepts: ["ownership", "deref"],
+        items: [
+          {
+            token: "name.0 = \"Elaina Hume\".to_string();",
+            concept: "ownership",
+            heading: "Automatic RAII / Drop on overwrite",
+            body: "Assigning a new <code>String</code> to <code>name.0</code> (via <code>DerefMut</code>) immediately <strong>drops</strong> (frees) the previous <code>\"Elaina Proctor\"</code> heap buffer. Memory management is deterministic with no garbage collector pause."
+          }
+        ]
+      },
+      36: {
+        section: "Update System (Mutating)",
+        title: "Early loop exit",
+        summary: "Stops iterating once Elaina's name has been updated.",
+        concepts: ["expr"],
+        items: [
+          {
+            token: "break;",
+            concept: "expr",
+            heading: "Loop control",
+            body: "Exits the enclosing <code>for</code> loop immediately. (Bonus Rust feature: <code>loop</code> expressions can even return a value with <code>break value;</code>, and nested loops support labels like <code>'outer: for ...</code>.)"
+          }
+        ]
+      },
+      41: {
+        section: "Resource Definition",
+        title: "Deriving `Resource`",
+        summary: "Marks `GreetTimer` as a singleton ECS resource.",
+        concepts: ["macros", "traits"],
+        items: [
+          {
+            token: "#[derive(Resource)]",
+            concept: "macros",
+            heading: "Another compile-time derive macro",
+            body: "Generates <code>impl Resource for GreetTimer</code> so Bevy can store a single global instance of it (inserted on line 14) and inject it into systems via <code>Res&lt;T&gt;</code> / <code>ResMut&lt;T&gt;</code>."
+          }
+        ]
+      },
+      42: {
+        section: "Resource Definition",
+        title: "Newtype wrapping `Timer`",
+        summary: "Wraps Bevy's `Timer` in a unique type so it doesn't collide with other timers.",
+        concepts: ["types"],
+        items: [
+          {
+            token: "struct GreetTimer(Timer);",
+            concept: "types",
+            heading: "Type-keyed storage via Newtypes",
+            body: "Because Bevy keys resources by their Rust type, wrapping <code>Timer</code> in <code>GreetTimer</code> lets you have multiple independent timer resources without collision—again with zero runtime overhead."
+          }
+        ]
+      },
+      44: {
+        section: "Update System (Read + Timer)",
+        title: "Shared vs. mutable borrows for parallel scheduling",
+        summary: "Reads global `Time` and `Name` components while mutating `GreetTimer`.",
+        concepts: ["ownership", "deref", "traits"],
+        items: [
+          {
+            token: "time: Res<Time>",
+            concept: "deref",
+            heading: "Read-only smart pointer",
+            body: "<code>Res&lt;Time&gt;</code> is an immutable smart pointer to the global <code>Time</code> resource. No <code>mut</code> is needed because we only call read-only methods on it."
+          },
+          {
+            token: "mut timer: ResMut<GreetTimer>",
+            concept: "ownership",
+            heading: "Mutable smart pointer",
+            body: "<code>ResMut&lt;GreetTimer&gt;</code> grants exclusive mutable access to <code>GreetTimer</code>. Because ticking a timer mutates its internal elapsed time, <code>timer</code> must be <code>mut</code>."
+          },
+          {
+            token: "query: Query<&Name, With<Person>>",
+            concept: "ownership",
+            heading: "Shared references enable safe parallelism",
+            body: "Compare with line 32: here it's <code>&Name</code> (immutable borrow) instead of <code>&mut Name</code>, and <code>query</code> is not <code>mut</code>. Because Rust's type system encodes read vs. write access, Bevy can safely run systems with compatible borrows in parallel across CPU threads."
+          }
+        ]
+      },
+      45: {
+        section: "Update System (Read + Timer)",
+        title: "Chained method calls through `Deref` & `DerefMut`",
+        summary: "Advances the timer by the frame's delta time and checks if the 2-second interval just elapsed.",
+        concepts: ["deref", "expr"],
+        items: [
+          {
+            token: "time.delta()",
+            concept: "deref",
+            heading: "Auto-deref on method calls",
+            body: "<code>time</code> is a <code>Res&lt;Time&gt;</code>, not a <code>Time</code>, yet you call <code>.delta()</code> directly on it. Rust's method resolution automatically dereferences through <code>Deref</code> to find <code>Time::delta(&self)</code>."
+          },
+          {
+            token: "timer.0.tick(...).just_finished()",
+            concept: "deref",
+            heading: "DerefMut + fluent chaining",
+            body: "<code>timer.0</code> dereferences <code>ResMut&lt;GreetTimer&gt;</code> to access the inner <code>Timer</code>. <code>.tick(duration)</code> mutates the timer in place and returns <code>&mut Timer</code>, allowing <code>.just_finished()</code> (returning <code>bool</code>) to be chained right onto it."
+          }
+        ]
+      },
+      46: {
+        section: "Update System (Read + Timer)",
+        title: "Immutable iteration over a query",
+        summary: "Borrows `query` immutably and yields `&Name` for each matching entity.",
+        concepts: ["ownership", "expr"],
+        items: [
+          {
+            token: "for name in &query",
+            concept: "ownership",
+            heading: "Shared borrow iteration",
+            body: "<code>&query</code> creates a shared borrow, yielding immutable <code>&Name</code> references. Notice neither <code>query</code> nor <code>name</code> needs <code>mut</code>."
+          }
+        ]
+      },
+      47: {
+        section: "Update System (Read + Timer)",
+        title: "Macros (`!`), compile-time format checks & omitted `;`",
+        summary: "Prints each person's name to stdout.",
+        concepts: ["macros", "expr", "traits"],
+        items: [
+          {
+            token: "println!(...)",
+            concept: "macros",
+            heading: "The `!` macro sigil",
+            body: "Any call ending in <code>!</code> is a <strong>macro</strong>, not a function. Rust doesn't have variadic functions; macros fill that role and expand at compile time. <code>println!</code> verifies at compile time that the number and types of arguments match the format string."
+          },
+          {
+            token: "\"hello {}\", name.0",
+            concept: "traits",
+            heading: "Format placeholders & the Display trait",
+            body: "<code>{}</code> formats a value using the <code>std::fmt::Display</code> trait (user-facing text). For debugging arbitrary structs, you'd use <code>{:?}</code> with the <code>Debug</code> trait. Also note Rust's auto-deref: <code>name</code> is <code>&Name</code>, and <code>name.0</code> automatically dereferences the reference."
+          },
+          {
+            token: "(no trailing ;)",
+            concept: "expr",
+            heading: "Expression-oriented blocks",
+            body: "There is no semicolon at the end of this line! Because <code>println!(...)</code> evaluates to <code>()</code>, and a <code>for</code> loop body must evaluate to <code>()</code>, omitting the <code>;</code> still compiles. Idiomatic Rust usually keeps the <code>;</code> for side-effect statements."
+          }
+        ]
+      },
+      52: {
+        section: "Unused Function",
+        title: "Private unused function (`dead_code`)",
+        summary: "An uncalled private helper left over from earlier in the Bevy tutorial.",
+        concepts: ["modules", "expr"],
+        items: [
+          {
+            token: "fn hello_world()",
+            concept: "modules",
+            heading: "Compiler dead-code analysis",
+            body: "Because <code>hello_world</code> is private (no <code>pub</code>) and never referenced in this crate, <code>rustc</code> will emit a helpful <code>warning: function `hello_world` is never used</code> at compile time."
+          }
+        ]
+      },
+      53: {
+        section: "Unused Function",
+        title: "Implicit return of `()`",
+        summary: "Prints a greeting; the omitted semicolon returns `()` from the function.",
+        concepts: ["macros", "expr"],
+        items: [
+          {
+            token: "println!(\"hello world!\")",
+            concept: "expr",
+            heading: "Last expression is the return value",
+            body: "In Rust, you don't need the <code>return</code> keyword at the end of a function—the final expression without a semicolon is automatically returned. Here <code>println!</code> returns <code>()</code>, which matches <code>hello_world()</code>'s implicit <code>()</code> return type."
+          }
+        ]
+      }
+    };
+
+    const annotatedLineNumbers = Object.keys(ANNOTATIONS).map(Number).sort((a, b) => a - b);
+
+    // State
+    let selectedLine = annotatedLineNumbers[0];
+    let activeFilter = "all";
+
+    // DOM refs
+    const filterBar = document.getElementById("filterBar");
+    const codeContainer = document.getElementById("codeContainer");
+    const inspectorBody = document.getElementById("inspectorBody");
+    const sectionLabel = document.getElementById("sectionLabel");
+    const filterStatus = document.getElementById("filterStatus");
+    const progressText = document.getElementById("progressText");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const themeToggle = document.getElementById("themeToggle");
+
+    function getFilteredLines() {
+      if (activeFilter === "all") return annotatedLineNumbers;
+      return annotatedLineNumbers.filter(ln => ANNOTATIONS[ln].concepts.includes(activeFilter));
+    }
+
+    function renderFilters() {
+      // Preserve label
+      filterBar.innerHTML = `<span class="filter-label">Concepts</span>`;
+
+      const allPill = document.createElement("button");
+      allPill.type = "button";
+      allPill.className = `pill ${activeFilter === "all" ? "active" : ""}`;
+      allPill.innerHTML = `All <span class="count">${annotatedLineNumbers.length}</span>`;
+      allPill.addEventListener("click", () => setFilter("all"));
+      filterBar.appendChild(allPill);
+
+      for (const [key, meta] of Object.entries(CONCEPTS)) {
+        const count = annotatedLineNumbers.filter(ln => ANNOTATIONS[ln].concepts.includes(key)).length;
+        const pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = `pill ${activeFilter === key ? "active" : ""}`;
+        pill.innerHTML = `<span class="dot" style="background:${meta.color}"></span>${meta.label} <span class="count">${count}</span>`;
+        pill.addEventListener("click", () => setFilter(activeFilter === key ? "all" : key));
+        filterBar.appendChild(pill);
+      }
+    }
+
+    function renderCode() {
+      codeContainer.innerHTML = "";
+      const matching = new Set(getFilteredLines());
+
+      SOURCE_LINES.forEach((raw, idx) => {
+        const ln = idx + 1;
+        const ann = ANNOTATIONS[ln];
+        const row = document.createElement("div");
+        row.className = "code-line";
+        row.dataset.line = ln;
+
+        if (ann) {
+          row.classList.add("annotated");
+          row.addEventListener("click", () => selectLine(ln));
+        }
+
+        if (activeFilter !== "all") {
+          if (matching.has(ln)) {
+            row.classList.add("filter-match");
+          } else {
+            row.classList.add("filter-dim");
+          }
+        }
+
+        if (ln === selectedLine) {
+          row.classList.add("selected");
+        }
+
+        const lnSpan = document.createElement("span");
+        lnSpan.className = "ln";
+        lnSpan.textContent = ln;
+
+        const codeSpan = document.createElement("span");
+        codeSpan.className = "code-text";
+        codeSpan.innerHTML = HIGHLIGHTED_LINES[idx] || " ";
+
+        row.appendChild(lnSpan);
+        row.appendChild(codeSpan);
+
+        if (ann) {
+          const dots = document.createElement("span");
+          dots.className = "line-dots";
+          ann.concepts.forEach(c => {
+            const d = document.createElement("span");
+            d.className = "line-dot";
+            d.style.background = CONCEPTS[c].color;
+            d.title = CONCEPTS[c].label;
+            dots.appendChild(d);
+          });
+          row.appendChild(dots);
+        }
+
+        codeContainer.appendChild(row);
+      });
+
+      if (activeFilter === "all") {
+        filterStatus.textContent = `${annotatedLineNumbers.length} annotated lines · click any line`;
+      } else {
+        filterStatus.textContent = `${matching.size} lines match "${CONCEPTS[activeFilter].label}"`;
+      }
+    }
+
+    function renderInspector() {
+      const ann = ANNOTATIONS[selectedLine];
+      if (!ann) return;
+
+      sectionLabel.textContent = ann.section;
+
+      const tagsHtml = ann.concepts.map(c => {
+        const meta = CONCEPTS[c];
+        return `<button type="button" class="tag" data-concept="${c}">
+          <span class="dot" style="width:7px;height:7px;border-radius:50%;background:${meta.color}"></span>
+          ${meta.label}
+        </button>`;
+      }).join("");
+
+      const cardsHtml = ann.items.map(item => {
+        const meta = CONCEPTS[item.concept];
+        return `
+          <article class="card">
+            <div class="card-header">
+              <span class="token-chip">${escapeHtml(item.token)}</span>
+              <span class="card-concept" style="color:${meta.color}">${meta.label}</span>
+            </div>
+            <h3>${item.heading}</h3>
+            <p>${item.body}</p>
+            ${item.callout ? `<div class="callout">${item.callout}</div>` : ""}
+          </article>
+        `;
+      }).join("");
+
+      inspectorBody.innerHTML = `
+        <div class="line-banner">
+          <div class="line-meta">
+            <h2 class="line-title">${ann.title}</h2>
+            <span class="line-badge">Line ${selectedLine}</span>
+          </div>
+          <div class="snippet-box">${HIGHLIGHTED_LINES[selectedLine - 1].trim()}</div>
+          <p class="line-summary">${ann.summary}</p>
+          <div class="tag-row">${tagsHtml}</div>
+        </div>
+        <div class="cards">${cardsHtml}</div>
+      `;
+
+      // Make concept tags inside the inspector clickable filters
+      inspectorBody.querySelectorAll(".tag").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const c = btn.dataset.concept;
+          setFilter(activeFilter === c ? "all" : c);
+        });
+      });
+
+      // Update footer nav
+      const navList = getFilteredLines();
+      const idx = navList.indexOf(selectedLine);
+      if (idx === -1) {
+        progressText.textContent = `Line ${selectedLine}`;
+        prevBtn.disabled = false;
+        nextBtn.disabled = false;
+      } else {
+        progressText.textContent = `Step ${idx + 1} / ${navList.length} (Line ${selectedLine})`;
+        prevBtn.disabled = idx === 0;
+        nextBtn.disabled = idx === navList.length - 1;
+      }
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function selectLine(ln, scrollIntoView = false) {
+      selectedLine = ln;
+      renderCode();
+      renderInspector();
+      inspectorBody.scrollTop = 0;
+
+      if (scrollIntoView) {
+        const el = codeContainer.querySelector(`.code-line[data-line="${ln}"]`);
+        if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+
+    function setFilter(filterKey) {
+      activeFilter = filterKey;
+      const list = getFilteredLines();
+      if (list.length > 0 && !list.includes(selectedLine)) {
+        selectedLine = list[0];
+      }
+      renderFilters();
+      renderCode();
+      renderInspector();
+      const el = codeContainer.querySelector(`.code-line[data-line="${selectedLine}"]`);
+      if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+
+    function step(delta) {
+      const list = getFilteredLines();
+      if (!list.length) return;
+      const idx = list.indexOf(selectedLine);
+      if (idx === -1) {
+        selectLine(list[0], true);
+        return;
+      }
+      const nextIdx = Math.max(0, Math.min(list.length - 1, idx + delta));
+      if (nextIdx !== idx) {
+        selectLine(list[nextIdx], true);
+      }
+    }
+
+    prevBtn.addEventListener("click", () => step(-1));
+    nextBtn.addEventListener("click", () => step(1));
+
+    document.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault();
+        step(1);
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault();
+        step(-1);
+      }
+    });
+
+    themeToggle.addEventListener("click", () => {
+      const isLight = document.documentElement.getAttribute("data-theme") === "light";
+      if (isLight) {
+        document.documentElement.removeAttribute("data-theme");
+        themeToggle.textContent = "Light theme";
+      } else {
+        document.documentElement.setAttribute("data-theme", "light");
+        themeToggle.textContent = "Dark theme";
+      }
+    });
+
+    // Initial render
+    renderFilters();
+    renderCode();
+    renderInspector();
+  </script>
+</body>
+</html>

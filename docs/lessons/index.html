@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Build 2D Tag in Bevy 0.20 — Interactive Course Hub</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lesson.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-badge">TAG</span>
+      <div class="brand-text">
+        <h1>Build 2D Tag in Bevy 0.20</h1>
+        <p>2D Game Physics, ECS Architecture &amp; Rust</p>
+      </div>
+    </a>
+    <nav class="nav-pills" aria-label="Lessons">
+      <a class="nav-pill active" href="index.html">Hub</a>
+      <a class="nav-pill" data-lesson-pill="01" href="01-arena-and-camera.html">01</a>
+      <a class="nav-pill" data-lesson-pill="02" href="02-player-movement-and-timestep.html">02</a>
+      <a class="nav-pill" data-lesson-pill="03" href="03-npcs-and-2d-collisions.html">03</a>
+      <a class="nav-pill" data-lesson-pill="04" href="04-tag-mechanics.html">04</a>
+      <a class="nav-pill" data-lesson-pill="05" href="05-elimination-and-flashing.html">05</a>
+      <a class="nav-pill" data-lesson-pill="06" href="06-hud-and-timer-ui.html">06</a>
+      <a class="nav-pill" data-lesson-pill="07" href="07-menus-pause-and-game-over.html">07</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn" id="themeToggle" type="button">Light theme</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="lesson-hero">
+      <div class="lesson-eyebrow">
+        <span class="pill pill-bevy">Bevy 0.20.1</span>
+        <span class="pill pill-physics">2D Physics From Scratch</span>
+        <span class="pill pill-rust">Rust Edition 2024</span>
+      </div>
+      <h2>From Bevy Quick Start to a Complete 2D Game of Tag</h2>
+      <p class="lesson-lead">
+        A hands-on, 7-lesson curriculum designed for writing every line of Rust yourself (<code>0rwx: r</code> mode).
+        Each lesson introduces the 2D math and Bevy ECS building blocks, walks you through guided implementation steps,
+        and hides reference code + Rust explanations inside collapsible hints until you want them.
+      </p>
+    </div>
+
+    <div class="progress-banner">
+      <div>
+        <strong style="font-size: 14px;">Your Progress</strong>
+        <div id="courseProgressLabel" style="font-size: 12.5px; color: var(--text-muted);">0 / 7 lessons completed (0%)</div>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="courseProgressFill"></div>
+      </div>
+    </div>
+
+    <section>
+      <h2>What You Will Build</h2>
+      <p>
+        By the end of Lesson 07, your <code>cargo run</code> binary will boot into a Main Menu and run a crisp, physics-driven top-down game of Tag:
+      </p>
+      <div class="objectives-grid">
+        <div class="obj-card">
+          <h3 style="color: var(--blue);">2D Physics Engine</h3>
+          <ul>
+            <li>Fixed-timestep integration (<code>FixedUpdate</code>)</li>
+            <li>Normalized 8-way player velocity at <strong>1.2×</strong> speed</li>
+            <li>NPC chase/flee/wall steering at <strong>1.0×</strong> speed</li>
+            <li>AABB overlap, Minimum Translation Vector (MTV) separation &amp; elastic bounce impulses</li>
+          </ul>
+        </div>
+        <div class="obj-card">
+          <h3 style="color: var(--accent);">Tag &amp; Elimination Loop</h3>
+          <ul>
+            <li>Collision-triggered <code>IsIt</code> transfer + anti-ping-pong cooldown</li>
+            <li><strong>10s</strong> elimination clock—hold <code>'it'</code> too long and you're despawned</li>
+            <li>Random next survivor flashes for <strong>5s</strong> before becoming <code>'it'</code></li>
+            <li>Game Over if the main player is eliminated (or Victory if last standing!)</li>
+          </ul>
+        </div>
+        <div class="obj-card">
+          <h3 style="color: var(--purple);">UI &amp; State Machine</h3>
+          <ul>
+            <li>Boot into <strong>Main Menu</strong> with a single <strong>Start</strong> button</li>
+            <li>Live HUD timer tracking the 10s / 5s clocks</li>
+            <li>Press <kbd>Esc</kbd> anytime to freeze physics &amp; open the <strong>Pause Menu</strong> (<kbd>Esc</kbd> again to resume)</li>
+            <li>Clean <strong>Restart</strong> &amp; <strong>Quit</strong> transitions via <code>DespawnOnExit</code></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Lesson Roadmap</h2>
+      <div class="curriculum-grid">
+        <a class="lesson-row-card" href="../rust-walkthrough.html">
+          <div class="lesson-row-num" style="color: var(--text-muted);">00</div>
+          <div class="lesson-row-body">
+            <h3>Prerequisite: Quick Start <code>src/main.rs</code> Walkthrough</h3>
+            <p>Interactive line-by-line inspector for the starter <code>HelloPlugin</code>, covering traits, structs, ownership, and Bevy queries.</p>
+            <span class="pill">Existing Resource</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="01" href="01-arena-and-camera.html">
+          <div class="lesson-row-num">01</div>
+          <div class="lesson-row-body">
+            <h3>ECS Mental Model, 2D Camera &amp; Bounded Arena</h3>
+            <p>Replace console printing with a <code>Camera2d</code>, learn Bevy's center-origin 2D coordinates, and frame an open play area ready for future maps.</p>
+            <span class="pill pill-bevy">Camera2d &amp; Sprite</span>
+            <span class="pill pill-rust">Const, Tuples &amp; Required Components</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="02" href="02-player-movement-and-timestep.html">
+          <div class="lesson-row-num">02</div>
+          <div class="lesson-row-body">
+            <h3>Player Input, Vectors, <code>FixedUpdate</code> &amp; Wall Physics</h3>
+            <p>Move your player square at 1.2× speed, normalize diagonal vectors so corners aren't 41% faster, integrate velocity in <code>FixedUpdate</code>, and slide along walls.</p>
+            <span class="pill pill-physics">Vectors &amp; Timestep</span>
+            <span class="pill pill-rust">Newtypes &amp; Deref</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="03" href="03-npcs-and-2d-collisions.html">
+          <div class="lesson-row-num">03</div>
+          <div class="lesson-row-body">
+            <h3>NPC Steering Velocity &amp; 2D AABB Collision Physics</h3>
+            <p>Spawn 1.0× speed NPC squares with smooth steering acceleration, detect Axis-Aligned Bounding Box overlaps, push squares apart along the MTV, and apply bounce impulses.</p>
+            <span class="pill pill-physics">AABB, MTV &amp; Impulses</span>
+            <span class="pill pill-rust">iter_combinations_mut &amp; Borrowing</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="04" href="04-tag-mechanics.html">
+          <div class="lesson-row-num">04</div>
+          <div class="lesson-row-body">
+            <h3>The <code>'It'</code> State, Collision Messages &amp; Tag Cooldowns</h3>
+            <p>Emit Bevy <code>Message</code>s from physics collisions, transfer the <code>IsIt</code> marker component, solve the multi-frame overlap trap, and upgrade NPCs to chase &amp; flee.</p>
+            <span class="pill pill-bevy">Messages &amp; Sparse Components</span>
+            <span class="pill pill-rust">Pattern Matching &amp; Option</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="05" href="05-elimination-and-flashing.html">
+          <div class="lesson-row-num">05</div>
+          <div class="lesson-row-body">
+            <h3>10s Elimination Clock, Random Pick &amp; 5s Flash Phase</h3>
+            <p>Model round phases with a Rust <code>enum</code>, eliminate anyone holding <code>'it'</code> past 10 seconds, pick a random survivor with <code>rand</code>, and flash them for 5 seconds.</p>
+            <span class="pill pill-rust">Algebraic Enums &amp; rand 0.10</span>
+            <span class="pill pill-bevy">Timers &amp; Despawning</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="06" href="06-hud-and-timer-ui.html">
+          <div class="lesson-row-num">06</div>
+          <div class="lesson-row-body">
+            <h3>Bevy UI Flexbox Layout &amp; Live Countdown HUD</h3>
+            <p>Build an on-screen HUD bar using Bevy's <code>Node</code> flexbox layout and <code>children![]</code> macro to display the live 10s / 5s countdown and survivor count.</p>
+            <span class="pill pill-bevy">Node, Text &amp; children![]</span>
+            <span class="pill pill-rust">Formatting &amp; Disjoint Queries</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+
+        <a class="lesson-row-card" data-lesson-card="07" href="07-menus-pause-and-game-over.html">
+          <div class="lesson-row-num">07</div>
+          <div class="lesson-row-body">
+            <h3>Game States, Main Menu, <kbd>Esc</kbd> Pause &amp; Restart/Quit</h3>
+            <p>Boot into a Start menu, toggle pause with <kbd>Esc</kbd>, wire Restart &amp; Quit with Bevy 0.20 pointer observers, handle Game Over, and organize clean Rust modules.</p>
+            <span class="pill pill-bevy">States, SubStates &amp; PointerClick</span>
+            <span class="pill pill-rust">Closures, Observers &amp; Modules</span>
+          </div>
+          <span style="color: var(--text-muted); font-size: 18px;">→</span>
+        </a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Target Architecture at a Glance</h2>
+      <p>
+        Every lesson uses consistent type names so you never have to throw away earlier work—each lesson layers cleanly onto what you already built:
+      </p>
+      <table class="ref-table">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Key Types You Will Write</th>
+            <th>Introduced In</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Arena</strong></td>
+            <td><code>ArenaBounds</code> (Resource), <code>Wall</code> (Component)</td>
+            <td>Lesson 01</td>
+          </tr>
+          <tr>
+            <td><strong>Physics</strong></td>
+            <td><code>Velocity(Vec2)</code>, <code>MoveSpeed(f32)</code>, <code>Collider { half_size }</code>, <code>CollisionMessage</code></td>
+            <td>Lessons 02–04</td>
+          </tr>
+          <tr>
+            <td><strong>Actors</strong></td>
+            <td><code>Character</code>, <code>Player</code> (1.2×), <code>Npc</code> (1.0×)</td>
+            <td>Lessons 02–03</td>
+          </tr>
+          <tr>
+            <td><strong>Tag Rules</strong></td>
+            <td><code>IsIt</code>, <code>TagCooldown(Timer)</code>, <code>RoundPhase</code> (10s ActiveTag / 5s FlashingNext)</td>
+            <td>Lessons 04–05</td>
+          </tr>
+          <tr>
+            <td><strong>UI &amp; Flow</strong></td>
+            <td><code>HudTimerText</code>, <code>AppState</code> (MainMenu / Playing / GameOver), <code>PlayState</code> (Running / Paused)</td>
+            <td>Lessons 06–07</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

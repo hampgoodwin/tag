@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lesson 03: NPC Steering Velocity &amp; 2D AABB Collision Physics — Tag in Bevy 0.20</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lesson.js" defer></script>
+</head>
+<body data-lesson-id="03">
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-badge">L03</span>
+      <div class="brand-text">
+        <h1>NPCs &amp; 2D Collisions</h1>
+        <p>Lesson 03 of 07 — Build 2D Tag in Bevy 0.20</p>
+      </div>
+    </a>
+    <nav class="nav-pills" aria-label="Lessons">
+      <a class="nav-pill" href="index.html">Hub</a>
+      <a class="nav-pill" data-lesson-pill="01" href="01-arena-and-camera.html">01</a>
+      <a class="nav-pill" data-lesson-pill="02" href="02-player-movement-and-timestep.html">02</a>
+      <a class="nav-pill active" data-lesson-pill="03" href="03-npcs-and-2d-collisions.html">03</a>
+      <a class="nav-pill" data-lesson-pill="04" href="04-tag-mechanics.html">04</a>
+      <a class="nav-pill" data-lesson-pill="05" href="05-elimination-and-flashing.html">05</a>
+      <a class="nav-pill" data-lesson-pill="06" href="06-hud-and-timer-ui.html">06</a>
+      <a class="nav-pill" data-lesson-pill="07" href="07-menus-pause-and-game-over.html">07</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn" id="toggleSolutionsBtn" type="button">Expand Solutions</button>
+      <button class="btn btn-done" id="markDoneBtn" type="button">Mark Complete</button>
+      <button class="btn" id="themeToggle" type="button">Light theme</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="lesson-hero">
+      <div class="lesson-eyebrow">
+        <span class="pill pill-physics">AABB, MTV &amp; Elastic Impulses</span>
+        <span class="pill pill-physics">Steering Velocity</span>
+        <span class="pill pill-rust">Lending Iterators &amp; Aliasing</span>
+      </div>
+      <h2>Lesson 03: NPC Steering Velocity &amp; 2D AABB Collision Physics</h2>
+      <p class="lesson-lead">
+        This is the core 2D physics lesson of the course. You will spawn <strong>1.0× speed</strong> NPC squares driven by smooth steering vectors,
+        detect <strong>Axis-Aligned Bounding Box (AABB)</strong> collisions from scratch, separate overlapping squares along the <strong>Minimum Translation Vector (MTV)</strong>,
+        and exchange elastic bounce impulses!
+      </p>
+    </div>
+
+    <div class="objectives-grid">
+      <div class="obj-card">
+        <h3 style="color: var(--blue);">2D Physics Concepts</h3>
+        <ul>
+          <li>Steering velocity: desired direction, wall-margin avoidance &amp; <code>lerp</code> turn rate</li>
+          <li>AABB overlap test on X and Y axes</li>
+          <li>Minimum Translation Vector (MTV) positional separation</li>
+          <li>Normal dot-product relative velocity &amp; restitution impulses</li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--accent);">Bevy 0.20 Concepts</h3>
+        <ul>
+          <li>Reusing shared physics components across Player &amp; NPCs</li>
+          <li><code>query.iter_combinations_mut()</code> + <code>fetch_next()</code></li>
+          <li>Multi-step <code>FixedUpdate</code> physics pipeline</li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--purple);">Rust Concepts</h3>
+        <ul>
+          <li>Why Rust forbids aliasing <code>&amp;mut T</code> in nested loops</li>
+          <li>Lending iterators (<code>while let Some([a, b]) = ...</code>)</li>
+          <li>Collecting read-only snapshots into a <code>Vec</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <section>
+      <h2>1. AABB Collision Detection &amp; Minimum Translation Vector (MTV)</h2>
+      <p>
+        Because our squares never rotate, their sides stay aligned with the world X and Y axes. That makes each square an
+        <strong>Axis-Aligned Bounding Box (AABB)</strong> defined by its center <code>pos</code> and <code>half_size</code>.
+      </p>
+      <p>
+        Given Square A at <code>pos_a</code> (half-size <code>h_a</code>) and Square B at <code>pos_b</code> (half-size <code>h_b</code>), let <code>delta = pos_b - pos_a</code>:
+      </p>
+      <ul>
+        <li><strong>X-axis penetration:</strong> <code>overlap_x = (h_a.x + h_b.x) - delta.x.abs()</code></li>
+        <li><strong>Y-axis penetration:</strong> <code>overlap_y = (h_a.y + h_b.y) - delta.y.abs()</code></li>
+      </ul>
+      <p>
+        Two AABBs collide <strong>if and only if both <code>overlap_x &gt; 0.0</code> AND <code>overlap_y &gt; 0.0</code></strong>!
+        If there is a gap on <em>either</em> axis, they are not touching.
+      </p>
+
+      <!-- Interactive Draggable AABB + MTV Sandbox -->
+      <div class="lab-card">
+        <div class="lab-header">
+          <div class="lab-title">Interactive Physics Lab: Drag Square B Into Square A</div>
+          <div class="lab-controls">
+            <span>Drag the green square (B) into A — yellow dashed outline shows full MTV separation</span>
+          </div>
+        </div>
+        <div class="lab-body">
+          <div class="lab-canvas-wrap">
+            <canvas id="aabbCanvas" width="520" height="320" style="cursor: grab;"></canvas>
+          </div>
+          <div class="lab-readout">
+            <div class="readout-row">
+              <span class="readout-key">delta (B - A):</span>
+              <span class="readout-val" id="roDelta">(0, 0)</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">overlap_x:</span>
+              <span class="readout-val" id="roOvX">0.0</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">overlap_y:</span>
+              <span class="readout-val" id="roOvY">0.0</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Colliding?</span>
+              <span class="readout-val" id="roHit">false</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">MTV Normal n̂:</span>
+              <span class="readout-val" id="roNormal">—</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Penetration:</span>
+              <span class="readout-val" id="roPen">0.0 px</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Step A of Resolution: Positional Separation Along the MTV</h3>
+      <p>
+        When <code>overlap_x &gt; 0.0 &amp;&amp; overlap_y &gt; 0.0</code>, which way should we push the squares apart?
+        Always choose the <strong>axis with the smaller overlap</strong>! Think about running into the side of a wide wall:
+        <code>overlap_x</code> might be <code>2.0 px</code> while <code>overlap_y</code> is <code>26.0 px</code>—you clearly hit it horizontally, not vertically!
+      </p>
+      <ul>
+        <li>Let unit normal <code>normal</code> point from <strong>A toward B</strong> along that minimum axis (e.g., if <code>overlap_x &lt; overlap_y</code>, <code>normal = Vec2::new(if delta.x &gt;= 0.0 { 1.0 } else { -1.0 }, 0.0)</code> and <code>penetration = overlap_x</code>).</li>
+        <li>Push A and B apart equally: <code>pos_a -= normal * (penetration * 0.5)</code> and <code>pos_b += normal * (penetration * 0.5)</code>.</li>
+      </ul>
+
+      <h3>Step B of Resolution: Elastic Velocity Impulse</h3>
+      <p>
+        Separating positions stops overlap, but their velocities are still pointing into each other! To make them bounce realistically:
+      </p>
+      <ol>
+        <li>Compute relative velocity of B with respect to A: <code>rel_vel = vel_b - vel_a</code>.</li>
+        <li>Project onto the collision normal using the <strong>dot product</strong>: <code>vel_along_normal = rel_vel.dot(normal)</code>.</li>
+        <li><strong>Crucial guard:</strong> If <code>vel_along_normal &gt;= 0.0</code>, the squares are <em>already moving apart</em>—do not apply an impulse!</li>
+        <li>For two equal-mass squares with restitution (bounciness) <code>RESTITUTION = 0.85</code>:
+          <pre><code class="language-rust">let impulse_mag = -(1.0 + RESTITUTION) * vel_along_normal * 0.5;
+let impulse = normal * impulse_mag;
+vel_a -= impulse;
+vel_b += impulse;</code></pre>
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>2. Simple Steering Velocity for NPCs</h2>
+      <p>
+        Instead of moving like mindless billiard balls, NPCs use <strong>Reynolds Steering</strong>: each tick, an NPC computes a <code>desired_dir: Vec2</code>, scales it by <code>MoveSpeed</code> (<code>1.0 × BASE_SPEED = 220.0 px/s</code>, slower than your <code>264.0 px/s</code> player!), and smoothly turns its current <code>Velocity</code> toward that goal.
+      </p>
+      <p>
+        In this lesson (before we introduce <code>'it'</code> in Lesson 04), each NPC combines three simple steering desires:
+      </p>
+      <ul>
+        <li><strong>Cruise forward:</strong> Keep heading along its current direction (or a gentle initial heading if nearly stopped) so NPCs roam actively across the open area.</li>
+        <li><strong>Personal-space separation:</strong> Gently steer away from any neighbor within <code>95 px</code> so NPCs spread out across the arena instead of clumping.</li>
+        <li><strong>Soft wall avoidance:</strong> Within <code>75 px</code> of any arena wall, add an inward push proportional to how close the wall is, so NPCs bank smoothly away from corners!</li>
+      </ul>
+      <p>
+        In Lesson 04, adding full <strong>Chase (when <code>'it'</code>) &amp; Flee (when not <code>'it'</code>)</strong> behavior will simply add one vector to this exact steering sum!
+      </p>
+    </section>
+
+    <section>
+      <h2>3. Guided Building Blocks</h2>
+
+      <!-- Step 1 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 1</span>
+          <h3>Add <code>Npc</code> Marker &amp; Spawn 5 NPC Squares</h3>
+        </div>
+        <p>
+          Define <code>NPC_COUNT: usize = 5</code>, <code>NPC_STEER_ACCEL: f32 = 6.0</code>, <code>RESTITUTION: f32 = 0.85</code>, and a unit component <code>Npc</code>.
+          Then write a <code>spawn_npcs(mut commands: Commands)</code> startup system that spawns 5 green/teal squares arranged in a ring around the player (so nobody starts overlapping at <code>(0, 0)</code>!):
+        </p>
+        <ul class="api-list">
+          <li>Use angle <code>angle = (i as f32 / NPC_COUNT as f32) * std::f32::consts::TAU</code> (<code>TAU = 2π</code>, a full circle!).</li>
+          <li>Position on a ring of radius <code>180.0</code>: <code>pos = Vec2::from_angle(angle) * 180.0</code>.</li>
+          <li>Give each NPC an initial <code>Velocity(Vec2::from_angle(angle + 1.2) * BASE_SPEED)</code>, <code>MoveSpeed(BASE_SPEED)</code> (<strong>1.0×</strong> speed!), <code>Character</code>, <code>Npc</code>, and <code>Collider</code>.</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 1 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">pub const NPC_COUNT: usize = 5;
+pub const NPC_STEER_ACCEL: f32 = 6.0;
+pub const RESTITUTION: f32 = 0.85;
+
+#[derive(Component)]
+pub struct Npc;
+
+fn spawn_npcs(mut commands: Commands) {
+    let npc_color = Color::srgb(0.41, 0.86, 0.49);
+
+    for i in 0..NPC_COUNT {
+        let angle = (i as f32 / NPC_COUNT as f32) * std::f32::consts::TAU;
+        let pos = Vec2::from_angle(angle) * 180.0;
+        let initial_dir = Vec2::from_angle(angle + 1.2);
+
+        commands.spawn((
+            Character,
+            Npc,
+            Sprite::from_color(npc_color, Vec2::splat(CHARACTER_SIZE)),
+            Transform::from_xyz(pos.x, pos.y, 2.0),
+            Velocity(initial_dir * BASE_SPEED),
+            MoveSpeed(BASE_SPEED),
+            Collider {
+                half_size: Vec2::splat(CHARACTER_SIZE * 0.5),
+            },
+        ));
+    }
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concepts Inside This Snippet:</strong>
+              <ul>
+                <li><strong>Explicit Numeric Casting (<code>i as f32</code>):</strong> Loop range <code>0..NPC_COUNT</code> yields <code>usize</code> integers. Rust requires explicit <code>as f32</code> casts so accidental integer division (where <code>1 / 5 == 0</code>!) can never silently zero out your angles!</li>
+                <li><strong><code>Vec2::from_angle(radians)</code>:</strong> Returns the unit vector <code>(cos(θ), sin(θ))</code> directly.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 2</span>
+          <h3>Implement <code>npc_steering</code></h3>
+        </div>
+        <p>
+          Write <code>npc_steering</code> to steer every <code>Npc</code> smoothly at <code>1.0 × BASE_SPEED</code>.
+          Wait—how can an NPC read the positions of <em>all</em> characters while mutating its <em>own</em> <code>Velocity</code> without violating Rust's borrow checker?
+        </p>
+        <p>
+          <strong>Cleanest Rust pattern:</strong> Use two non-conflicting queries—<code>all_characters: Query&lt;(Entity, &amp;Transform), With&lt;Character&gt;&gt;</code> (read-only) and <code>mut npcs: Query&lt;(Entity, &amp;Transform, &amp;MoveSpeed, &amp;mut Velocity), With&lt;Npc&gt;&gt;</code>—collect a tiny <code>Vec&lt;(Entity, Vec2)&gt;</code> snapshot in pass 1, then compute steering vectors in pass 2! With 6 characters, collecting a 6-element <code>Vec</code> takes nanoseconds and keeps the math super readable—especially in Lesson 04 when NPCs inspect who <code>IsIt</code>!
+        </p>
+
+        <details class="solution">
+          <summary>Step 2 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn npc_steering(
+    time: Res&lt;Time&gt;,
+    arena: Res&lt;ArenaBounds&gt;,
+    all_characters: Query&lt;(Entity, &amp;Transform), With&lt;Character&gt;&gt;,
+    mut npcs: Query&lt;(Entity, &amp;Transform, &amp;MoveSpeed, &amp;mut Velocity), With&lt;Npc&gt;&gt;,
+) {
+    let snapshot: Vec&lt;(Entity, Vec2)&gt; = all_characters
+        .iter()
+        .map(|(e, tf)| (e, tf.translation.truncate()))
+        .collect();
+
+    let dt = time.delta_secs();
+    let blend = (NPC_STEER_ACCEL * dt).min(1.0);
+    let wall_margin = 75.0;
+
+    for (entity, transform, speed, mut velocity) in &amp;mut npcs {
+        let pos = transform.translation.truncate();
+
+        // 1. Keep cruising along current heading (fallback if nearly zero)
+        let mut steer = velocity.0.normalize_or(Vec2::X);
+
+        // 2. Gentle personal-space separation from nearby characters
+        for &amp;(other_entity, other_pos) in &amp;snapshot {
+            if other_entity == entity {
+                continue;
+            }
+            let away = pos - other_pos;
+            let dist = away.length();
+            if dist &gt; 0.001 &amp;&amp; dist &lt; 95.0 {
+                steer += (away / dist) * ((95.0 - dist) / 95.0) * 1.4;
+            }
+        }
+
+        // 3. Soft wall-margin avoidance so NPCs curve smoothly inside the arena
+        let dist_right = arena.half_size.x - pos.x;
+        let dist_left = arena.half_size.x + pos.x;
+        let dist_top = arena.half_size.y - pos.y;
+        let dist_bottom = arena.half_size.y + pos.y;
+
+        if dist_right &lt; wall_margin {
+            steer.x -= ((wall_margin - dist_right) / wall_margin) * 2.2;
+        }
+        if dist_left &lt; wall_margin {
+            steer.x += ((wall_margin - dist_left) / wall_margin) * 2.2;
+        }
+        if dist_top &lt; wall_margin {
+            steer.y -= ((wall_margin - dist_top) / wall_margin) * 2.2;
+        }
+        if dist_bottom &lt; wall_margin {
+            steer.y += ((wall_margin - dist_bottom) / wall_margin) * 2.2;
+        }
+
+        let desired_vel = steer.normalize_or_zero() * speed.0;
+        velocity.0 = velocity.0.lerp(desired_vel, blend);
+    }
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Rust &amp; Bevy Borrow-Checker Insight:</strong>
+              <ul>
+                <li>Notice that <code>all_characters</code> only borrows <code>&amp;Transform</code> (shared/immutable), while <code>npcs</code> borrows <code>&amp;Transform</code>, <code>&amp;MoveSpeed</code>, and <code>&amp;mut Velocity</code>! Because <em>neither</em> query mutates <code>Transform</code>, and only <code>npcs</code> touches <code>Velocity</code>, Bevy verifies at startup that these two queries have <strong>zero mutable aliasing conflict</strong>!</li>
+                <li><code>tf.translation.truncate()</code> drops the <code>z</code> coordinate of a <code>Vec3</code> to give you a 2D <code>Vec2</code>.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 3</span>
+          <h3>Implement <code>resolve_character_collisions</code> (AABB + MTV + Bounce)</h3>
+        </div>
+        <p>
+          Now write the pairwise AABB collision system over <code>mut query: Query&lt;(&amp;mut Transform, &amp;mut Velocity, &amp;Collider), With&lt;Character&gt;&gt;</code>!
+        </p>
+
+        <div class="callout callout-rust">
+          <div class="callout-title">Rust Deep Dive: Why <code>iter_combinations_mut()</code> Uses <code>fetch_next()</code></div>
+          <p>
+            If you tried writing nested loops <code>for a in &amp;mut query { for b in &amp;mut query { ... } }</code>, Rust would immediately reject your code: when <code>a == b</code>, you would hold <em>two mutable references to the exact same memory</em> (instant Undefined Behavior in Rust!).
+          </p>
+          <p>
+            Even more subtly: why can't <code>query.iter_combinations_mut()</code> use a normal <code>for [a, b] in ...</code> loop? Because Rust's standard <code>Iterator::next</code> trait allows callers to call <code>.collect::&lt;Vec&lt;_&gt;&gt;()</code>, which would hold <code>[&amp;mut A, &amp;mut B]</code> and <code>[&amp;mut A, &amp;mut C]</code> alive at the same time—aliasing <code>&amp;mut A</code>!
+            Instead, Bevy returns a <strong>lending iterator</strong> whose <code>.fetch_next()</code> method ties the lifetime of <code>[a, b]</code> to the loop body:
+          </p>
+          <pre><code class="language-rust">let mut combinations = query.iter_combinations_mut();
+while let Some([mut a, mut b]) = combinations.fetch_next() {
+    // Guaranteed: `a` and `b` are two DIFFERENT entities, and dropped before next iteration!
+}</code></pre>
+        </div>
+
+        <details class="solution">
+          <summary>Step 3 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn resolve_character_collisions(
+    mut query: Query&lt;(&amp;mut Transform, &amp;mut Velocity, &amp;Collider), With&lt;Character&gt;&gt;,
+) {
+    let mut combinations = query.iter_combinations_mut();
+
+    while let Some([(mut tf_a, mut vel_a, col_a), (mut tf_b, mut vel_b, col_b)]) =
+        combinations.fetch_next()
+    {
+        let pos_a = tf_a.translation.truncate();
+        let pos_b = tf_b.translation.truncate();
+        let delta = pos_b - pos_a;
+
+        let overlap_x = (col_a.half_size.x + col_b.half_size.x) - delta.x.abs();
+        let overlap_y = (col_a.half_size.y + col_b.half_size.y) - delta.y.abs();
+
+        if overlap_x &gt; 0.0 &amp;&amp; overlap_y &gt; 0.0 {
+            // 1. Minimum Translation Vector (axis of least penetration, pointing A -> B)
+            let (normal, penetration) = if overlap_x &lt; overlap_y {
+                let sign = if delta.x &gt;= 0.0 { 1.0 } else { -1.0 };
+                (Vec2::new(sign, 0.0), overlap_x)
+            } else {
+                let sign = if delta.y &gt;= 0.0 { 1.0 } else { -1.0 };
+                (Vec2::new(0.0, sign), overlap_y)
+            };
+
+            // 2. Separate positions 50% / 50% so they no longer overlap
+            let correction = normal * (penetration * 0.5);
+            tf_a.translation.x -= correction.x;
+            tf_a.translation.y -= correction.y;
+            tf_b.translation.x += correction.x;
+            tf_b.translation.y += correction.y;
+
+            // 3. Apply elastic impulse if approaching along normal
+            let rel_vel = vel_b.0 - vel_a.0;
+            let vel_along_normal = rel_vel.dot(normal);
+
+            if vel_along_normal &lt; 0.0 {
+                let impulse = normal * (-(1.0 + RESTITUTION) * vel_along_normal * 0.5);
+                vel_a.0 -= impulse;
+                vel_b.0 += impulse;
+            }
+        }
+    }
+}</code></pre>
+            <p style="margin-top: 10px;">Wire <code>spawn_npcs</code> into <code>Startup</code> and update your <code>FixedUpdate</code> chain so collisions resolve <em>after</em> movement and <em>before</em> <code>confine_to_arena</code>:</p>
+<pre><code class="language-rust">        .add_systems(Startup, (setup_camera, spawn_arena, spawn_player, spawn_npcs))
+        .add_systems(
+            FixedUpdate,
+            (
+                player_input,
+                npc_steering,
+                apply_velocity,
+                resolve_character_collisions,
+                confine_to_arena,
+            )
+                .chain(),
+        )</code></pre>
+            <div class="rust-notes">
+              <strong>Why Run <code>confine_to_arena</code> Last?</strong>
+              <ul>
+                <li>If two squares collide right next to a border wall, <code>resolve_character_collisions</code> pushes each square outward by <code>penetration * 0.5</code>. Running <code>confine_to_arena</code> immediately afterward guarantees that separation push can never shove a square outside the arena walls!</li>
+                <li>Notice <code>let (normal, penetration) = if overlap_x &lt; overlap_y { ... } else { ... };</code>—in Rust, <code>if / else</code> is an <strong>expression</strong> that returns a value, letting you initialize <code>normal</code> and <code>penetration</code> immutably in one clean step!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="checklist-card">
+        <h3>Verify Before Moving On (<code>cargo run</code>)</h3>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>1 blue player square and 5 green NPC squares roam smoothly inside the arena, banking away from walls.</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Your blue square is noticeably faster (<code>1.2×</code>) than the NPC squares and can catch up to any of them.</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Ramming into NPCs knocks them aside with a crisp physical bounce—squares never pass through each other or get pushed outside the walls!</span>
+        </label>
+      </div>
+    </section>
+
+    <footer class="lesson-footer">
+      <a class="footer-nav-link" href="02-player-movement-and-timestep.html">
+        <span>← Previous Lesson</span>
+        <strong>02: Player Movement &amp; Timestep</strong>
+      </a>
+      <a class="footer-nav-link" href="04-tag-mechanics.html" style="text-align: right;">
+        <span>Next Lesson →</span>
+        <strong>04: Tag Mechanics &amp; Cooldowns</strong>
+      </a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById("aabbCanvas");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+
+      const HALF = 42; // Larger visual squares for clarity
+      const boxA = { x: 240, y: 160 };
+      const boxB = { x: 298, y: 132 };
+      let dragging = false;
+
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#080b10";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const dx = boxB.x - boxA.x;
+        const dy = boxB.y - boxA.y; // screen Y down; flip sign for Bevy display
+        const worldDy = -(boxB.y - boxA.y);
+
+        const ovX = (HALF + HALF) - Math.abs(dx);
+        const ovY = (HALF + HALF) - Math.abs(worldDy);
+        const hit = ovX > 0 && ovY > 0;
+
+        // Draw A (Blue)
+        ctx.fillStyle = "rgba(77, 171, 247, 0.28)";
+        ctx.strokeStyle = "#4dabf7";
+        ctx.lineWidth = 2;
+        ctx.fillRect(boxA.x - HALF, boxA.y - HALF, HALF * 2, HALF * 2);
+        ctx.strokeRect(boxA.x - HALF, boxA.y - HALF, HALF * 2, HALF * 2);
+        ctx.fillStyle = "#4dabf7";
+        ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.fillText("A", boxA.x - 4, boxA.y + 4);
+
+        // Draw B (Green / Coral on hit)
+        ctx.fillStyle = hit ? "rgba(247, 129, 102, 0.30)" : "rgba(63, 185, 80, 0.28)";
+        ctx.strokeStyle = hit ? "#f78166" : "#3fb950";
+        ctx.fillRect(boxB.x - HALF, boxB.y - HALF, HALF * 2, HALF * 2);
+        ctx.strokeRect(boxB.x - HALF, boxB.y - HALF, HALF * 2, HALF * 2);
+        ctx.fillStyle = hit ? "#f78166" : "#3fb950";
+        ctx.fillText("B (drag)", boxB.x - 26, boxB.y + 4);
+
+        let normalStr = "—";
+        let pen = 0;
+
+        if (hit) {
+          // Highlight overlap rectangle
+          const left = Math.max(boxA.x - HALF, boxB.x - HALF);
+          const top = Math.max(boxA.y - HALF, boxB.y - HALF);
+          const right = Math.min(boxA.x + HALF, boxB.x + HALF);
+          const bot = Math.min(boxA.y + HALF, boxB.y + HALF);
+          ctx.fillStyle = "rgba(242, 204, 96, 0.38)";
+          ctx.fillRect(left, top, right - left, bot - top);
+
+          let nx = 0, nyScreen = 0, nyWorld = 0;
+          if (ovX < ovY) {
+            nx = dx >= 0 ? 1 : -1;
+            pen = ovX;
+            normalStr = `(${nx.toFixed(0)}, 0)`;
+          } else {
+            nyScreen = dy >= 0 ? 1 : -1;
+            nyWorld = -nyScreen;
+            pen = ovY;
+            normalStr = `(0, ${nyWorld.toFixed(0)})`;
+          }
+
+          // Ghost separated position for B
+          const sepBx = boxB.x + nx * pen;
+          const sepBy = boxB.y + nyScreen * pen;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = "#f2cc60";
+          ctx.strokeRect(sepBx - HALF, sepBy - HALF, HALF * 2, HALF * 2);
+          ctx.setLineDash([]);
+
+          // MTV arrow on B
+          ctx.strokeStyle = "#f2cc60";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(boxB.x, boxB.y);
+          ctx.lineTo(sepBx, sepBy);
+          ctx.stroke();
+        }
+
+        document.getElementById("roDelta").textContent = `(${dx.toFixed(0)}, ${worldDy.toFixed(0)})`;
+        document.getElementById("roOvX").textContent = ovX.toFixed(1);
+        document.getElementById("roOvY").textContent = ovY.toFixed(1);
+        const hitEl = document.getElementById("roHit");
+        hitEl.textContent = hit ? "TRUE (overlap!)" : "false";
+        hitEl.style.color = hit ? "var(--accent)" : "var(--text-muted)";
+        document.getElementById("roNormal").textContent = normalStr;
+        document.getElementById("roPen").textContent = `${pen.toFixed(1)} px`;
+      }
+
+      function updatePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        boxB.x = Math.max(HALF, Math.min(canvas.width - HALF, (e.clientX - rect.left) * scaleX));
+        boxB.y = Math.max(HALF, Math.min(canvas.height - HALF, (e.clientY - rect.top) * scaleY));
+        render();
+      }
+
+      canvas.addEventListener("pointerdown", (e) => {
+        dragging = true;
+        canvas.setPointerCapture(e.pointerId);
+        updatePos(e);
+      });
+      canvas.addEventListener("pointermove", (e) => {
+        if (dragging) updatePos(e);
+      });
+      canvas.addEventListener("pointerup", () => { dragging = false; });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

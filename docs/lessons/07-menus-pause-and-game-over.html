@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lesson 07: Game States, Main Menu, Esc Pause &amp; Restart/Quit — Tag in Bevy 0.20</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lesson.js" defer></script>
+</head>
+<body data-lesson-id="07">
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-badge">L07</span>
+      <div class="brand-text">
+        <h1>Menus, Pause &amp; Game Over</h1>
+        <p>Lesson 07 of 07 — Build 2D Tag in Bevy 0.20</p>
+      </div>
+    </a>
+    <nav class="nav-pills" aria-label="Lessons">
+      <a class="nav-pill" href="index.html">Hub</a>
+      <a class="nav-pill" data-lesson-pill="01" href="01-arena-and-camera.html">01</a>
+      <a class="nav-pill" data-lesson-pill="02" href="02-player-movement-and-timestep.html">02</a>
+      <a class="nav-pill" data-lesson-pill="03" href="03-npcs-and-2d-collisions.html">03</a>
+      <a class="nav-pill" data-lesson-pill="04" href="04-tag-mechanics.html">04</a>
+      <a class="nav-pill" data-lesson-pill="05" href="05-elimination-and-flashing.html">05</a>
+      <a class="nav-pill" data-lesson-pill="06" href="06-hud-and-timer-ui.html">06</a>
+      <a class="nav-pill active" data-lesson-pill="07" href="07-menus-pause-and-game-over.html">07</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn" id="toggleSolutionsBtn" type="button">Expand Solutions</button>
+      <button class="btn btn-done" id="markDoneBtn" type="button">Mark Complete</button>
+      <button class="btn" id="themeToggle" type="button">Light theme</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="lesson-hero">
+      <div class="lesson-eyebrow">
+        <span class="pill pill-bevy">States, SubStates &amp; DespawnOnExit</span>
+        <span class="pill pill-bevy">Pointer Observers (On&lt;PointerClick&gt;)</span>
+        <span class="pill pill-rust">Closures, Modules &amp; AppExit</span>
+      </div>
+      <h2>Lesson 07: Game States, Main Menu, <kbd>Esc</kbd> Pause &amp; Restart/Quit</h2>
+      <p class="lesson-lead">
+        Time to bring everything together into a complete, polished game loop!
+        You will boot into a <strong>Main Menu</strong> (single <strong>Start</strong> button), let the player press <kbd>Esc</kbd> anytime to freeze physics and open the <strong>Pause Menu</strong> (<strong>Restart</strong> &amp; <strong>Quit</strong>, or <kbd>Esc</kbd> again to resume), transition to <strong>Game Over</strong> when eliminated, and optionally organize your code into clean Rust modules ready for custom maps!
+      </p>
+    </div>
+
+    <div class="objectives-grid">
+      <div class="obj-card">
+        <h3 style="color: var(--blue);">State Machine Design</h3>
+        <ul>
+          <li>Top-level <code>AppState</code>: <code>MainMenu</code> → <code>Playing</code> → <code>GameOver</code></li>
+          <li>Child <code>SubStates</code> <code>PlayState</code>: <code>Running</code> ↔ <code>Paused</code></li>
+          <li>Freezing <code>FixedUpdate</code> physics automatically via <code>.run_if(...)</code></li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--accent);">Bevy 0.20 Concepts</h3>
+        <ul>
+          <li><code>DespawnOnExit(State)</code> for zero-leak Restart cleanup</li>
+          <li>Modern UI buttons via <code>.observe(|_: On&lt;PointerClick&gt;, ...|)</code></li>
+          <li>Quitting cleanly via <code>MessageWriter&lt;AppExit&gt;</code></li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--purple);">Rust Concepts</h3>
+        <ul>
+          <li>Observer closures (<code>|trigger: On&lt;...&gt;| { ... }</code>)</li>
+          <li>Trait bounds required by <code>States</code> (<code>Eq</code>, <code>Hash</code>, <code>Clone</code>)</li>
+          <li>Splitting a growing file into Rust modules (<code>mod</code> &amp; <code>Plugin</code>)</li>
+        </ul>
+      </div>
+    </div>
+
+    <section>
+      <h2>1. Hierarchical Game States: <code>AppState</code> + <code>PlayState</code></h2>
+      <p>
+        Why use <em>two</em> state enums instead of putting <code>Paused</code> inside <code>AppState</code>?
+        Think about what happens when you press <kbd>Esc</kbd> mid-match: you want the arena, player, NPCs, and HUD to <strong>remain visible on screen</strong> in the background while frozen, and only despawn when leaving the match!
+      </p>
+      <p>
+        Bevy's <strong><code>SubStates</code></strong> was built for this exact pattern:
+      </p>
+      <ul>
+        <li><strong><code>AppState</code> (<code>MainMenu</code>, <code>Playing</code>, <code>GameOver</code>):</strong> Owns the lifetime of match entities. Every arena wall, square, and HUD node carries <code>DespawnOnExit(AppState::Playing)</code>. Pausing does <em>not</em> exit <code>AppState::Playing</code>, so all squares stay right where they are!</li>
+        <li><strong><code>PlayState</code> (<code>Running</code>, <code>Paused</code>):</strong> Annotated with <code>#[source(AppState = AppState::Playing)]</code>. It exists <em>only</em> while <code>AppState::Playing</code> is active, starts in <code>Running</code> automatically, and gating your physics systems with <code>.run_if(in_state(PlayState::Running))</code> freezes every velocity and timer the instant you pause!</li>
+      </ul>
+
+      <!-- Interactive State Machine Simulator -->
+      <div class="lab-card">
+        <div class="lab-header">
+          <div class="lab-title">Interactive Lab: Test Your State Transitions</div>
+          <div class="lab-controls">
+            <button class="btn btn-primary" id="simStart" type="button">Click Start</button>
+            <button class="btn" id="simEsc" type="button">Press Esc</button>
+            <button class="btn" id="simRestart" type="button">Click Restart</button>
+            <button class="btn" id="simElim" type="button">Player Eliminated</button>
+          </div>
+        </div>
+        <div class="lab-body">
+          <div class="lab-canvas-wrap" style="padding: 22px; flex-direction: column; gap: 10px; min-height: 150px;">
+            <div id="simScreen" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; text-align: center;"></div>
+          </div>
+          <div class="lab-readout">
+            <div class="readout-row">
+              <span class="readout-key">AppState:</span>
+              <span class="readout-val" id="roAppState" style="color: var(--accent);">MainMenu</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">PlayState:</span>
+              <span class="readout-val" id="roPlayState">None</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Physics Active?</span>
+              <span class="readout-val" id="roPhys">false</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Visible Buttons:</span>
+              <span class="readout-val" id="roBtns">[Start]</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-bevy">
+        <div class="callout-title">Bevy 0.20 Modern UI Buttons: Pointer Observers!</div>
+        <p>
+          In Bevy 0.20, the legacy <code>bevy::ui::Button</code> and <code>Interaction</code> polling components were deprecated in favor of <strong>Picking Observers</strong> (included in <code>DefaultPlugins</code>!).
+          Any styled <code>Node</code> becomes an interactive button simply by attaching <code>.observe(...)</code> callbacks for <code>PointerEnter</code>, <code>PointerLeave</code>, and <code>PointerClick</code>—and pointer events automatically bubble up from the child <code>Text</code> label to your button <code>Node</code>!
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Guided Building Blocks</h2>
+
+      <!-- Step 1 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 1</span>
+          <h3>Define <code>AppState</code> &amp; <code>PlayState</code>, and Scope Match Entities</h3>
+        </div>
+        <ul class="api-list">
+          <li>Define <code>AppState</code> deriving <code>States, Default, Clone, Copy, PartialEq, Eq, Hash, Debug</code> with <code>#[default] MainMenu</code>, <code>Playing</code>, and <code>GameOver</code>.</li>
+          <li>Define <code>PlayState</code> deriving <code>SubStates, Default, Clone, Copy, PartialEq, Eq, Hash, Debug</code> with <code>#[source(AppState = AppState::Playing)]</code>, <code>#[default] Running</code>, and <code>Paused</code>.</li>
+          <li>Register <code>.init_state::&lt;AppState&gt;().add_sub_state::&lt;PlayState&gt;()</code> on <code>App</code> (right after <code>DefaultPlugins</code>!).</li>
+          <li>Keep <code>setup_camera</code> in <code>Startup</code> (one permanent camera for the whole app!), and move <code>(reset_match_resources, spawn_arena, spawn_player, spawn_npcs, spawn_hud)</code> to <strong><code>OnEnter(AppState::Playing)</code></strong>!</li>
+          <li>Add <strong><code>DespawnOnExit(AppState::Playing)</code></strong> to every entity spawned in <code>spawn_arena</code>, <code>spawn_player</code>, <code>spawn_npcs</code>, and the root node of <code>spawn_hud</code>!</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 1 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">#[derive(States, Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum AppState {
+    #[default]
+    MainMenu,
+    Playing,
+    GameOver,
+}
+
+#[derive(SubStates, Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[source(AppState = AppState::Playing)]
+pub enum PlayState {
+    #[default]
+    Running,
+    Paused,
+}
+
+fn reset_match_resources(mut commands: Commands) {
+    commands.insert_resource(RoundPhase::new_active());
+    commands.insert_resource(MatchOutcome::Ongoing);
+}</code></pre>
+            <p style="margin-top: 10px;">Remember to attach <code>DespawnOnExit(AppState::Playing)</code> to your match entities (floor, walls, player, NPCs, and root HUD node), e.g.:</p>
+<pre><code class="language-rust">// Example on spawn_player (do the same on floor, walls, NPCs, and root HUD Node!):
+commands.spawn((
+    DespawnOnExit(AppState::Playing),
+    Character,
+    Player,
+    // ... rest of components ...
+));</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concept: Why Does <code>#[derive(States)]</code> Require <code>Eq + Hash + Clone</code>?</strong>
+              <ul>
+                <li>Internally, Bevy stores transition schedules like <code>OnEnter(AppState::Playing)</code> in a <code>HashMap</code> keyed by state value! In Rust, a <code>HashMap</code> key must implement <code>Hash</code> and <code>Eq</code> (reflexive equality), and Bevy clones the tiny enum variant during transition events.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 2</span>
+          <h3>Build Reusable <code>button_bundle</code> &amp; <code>style_button_hover</code> Helpers</h3>
+        </div>
+        <p>
+          Avoid repeating styling and hover logic across your Start, Restart, and Quit buttons! Write two tiny helpers: <code>button_bundle(label: impl Into&lt;String&gt;) -&gt; impl Bundle</code> for consistent layout/text (marking the inner text <code>Pickable::IGNORE</code> so pointer hits target the button cleanly), and <code>style_button_hover</code> to highlight on <code>PointerEnter</code> / <code>PointerLeave</code>!
+        </p>
+
+        <details class="solution">
+          <summary>Step 2 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">const BTN_BG: Color = Color::srgb(0.14, 0.18, 0.25);
+const BTN_HOVER_BG: Color = Color::srgb(0.24, 0.30, 0.42);
+const BTN_BORDER: Color = Color::srgb(0.35, 0.43, 0.56);
+
+fn style_button_hover(entity_cmds: &amp;mut EntityCommands) {
+    entity_cmds
+        .observe(|enter: On&lt;PointerEnter&gt;, mut bgs: Query&lt;&amp;mut BackgroundColor&gt;| {
+            if let Ok(mut bg) = bgs.get_mut(enter.entity) {
+                bg.0 = BTN_HOVER_BG;
+            }
+        })
+        .observe(|leave: On&lt;PointerLeave&gt;, mut bgs: Query&lt;&amp;mut BackgroundColor&gt;| {
+            if let Ok(mut bg) = bgs.get_mut(leave.entity) {
+                bg.0 = BTN_BG;
+            }
+        });
+}
+
+fn button_bundle(label: impl Into&lt;String&gt;) -> impl Bundle {
+    (
+        Node {
+            width: Val::Px(220.0),
+            height: Val::Px(48.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.5)),
+            border_radius: BorderRadius::all(Val::Px(8.0)),
+            ..default()
+        },
+        BackgroundColor(BTN_BG),
+        BorderColor::all(BTN_BORDER),
+        children![(
+            Text::new(label),
+            TextFont::from_font_size(18.0),
+            TextColor(Color::srgb(0.95, 0.97, 1.0)),
+            Pickable::IGNORE,
+        )],
+    )
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concepts Inside This Snippet (Edition 2024 Gotcha!):</strong>
+              <ul>
+                <li><strong>Why <code>label: impl Into&lt;String&gt;</code> instead of <code>label: &amp;str</code>?</strong> In Rust <strong>Edition 2024</strong>, a return type of <code>-&gt; impl Bundle</code> automatically captures any input borrow lifetimes (<code>impl Bundle + use&lt;'_&gt;</code>). If you took <code>label: &amp;str</code>, passing a non-<code>'static</code> local string slice into <code>commands.spawn(button_bundle(&amp;s))</code> would fail because ECS components must be <code>'static</code>! Accepting <code>impl Into&lt;String&gt;</code> owns the label with zero captured lifetimes and accepts both <code>"Start"</code> and <code>String</code>!</li>
+                <li><strong>Return-Position <code>impl Bundle</code>:</strong> The tuple returned by <code>button_bundle</code> has a long nested macro type from <code>children![]</code>. Writing <code>-&gt; impl Bundle</code> lets the compiler infer the exact concrete type while promising callers it implements <code>Bundle</code>.</li>
+                <li><strong>Observer Closures (<code>|enter: On&lt;PointerEnter&gt;, ...|</code>):</strong> Just like regular Bevy systems, closures passed to <code>.observe(...)</code> can request any ECS parameters (<code>Query</code>, <code>ResMut</code>, <code>MessageWriter</code>)!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 3</span>
+          <h3>Implement Main Menu (<code>Start</code>), <kbd>Esc</kbd> Pause (<code>Restart</code> / <code>Quit</code>) &amp; Game Over</h3>
+        </div>
+        <p>
+          Now wire all three screens to match your exact specification:
+        </p>
+        <ul class="api-list">
+          <li><strong>Main Menu (<code>OnEnter(AppState::MainMenu)</code>):</strong> Full-screen centered column with game title and <strong>only one button: <code>Start</code></strong>. Clicking <code>Start</code> calls <code>next_state.set(AppState::Playing)</code>.</li>
+          <li><strong><kbd>Esc</kbd> Toggle (<code>Update</code> while <code>in_state(AppState::Playing)</code>):</strong> When <code>keyboard.just_pressed(KeyCode::Escape)</code> fires, match on <code>play_state.get()</code>:
+            <ul>
+              <li><code>PlayState::Running</code> → <code>next_play_state.set(PlayState::Paused)</code></li>
+              <li><code>PlayState::Paused</code> → <code>next_play_state.set(PlayState::Running)</code> (resumes!)</li>
+            </ul>
+          </li>
+          <li><strong>Pause Menu (<code>OnEnter(PlayState::Paused)</code>):</strong> Semi-transparent backdrop over the frozen arena with <strong>only two buttons: <code>Restart</code> and <code>Quit</code></strong> (plus a subtle hint text that pressing <kbd>Esc</kbd> resumes):
+            <ul>
+              <li><strong><code>Restart</code>:</strong> Calls <code>next_play_state.set(PlayState::Running); next_app_state.set(AppState::Playing);</code>. In Bevy 0.20, <code>NextState::set</code> runs same-state exit + enter transitions, so <code>DespawnOnExit(AppState::Playing)</code> wipes the old match and <code>OnEnter(AppState::Playing)</code> spawns a brand-new match!</li>
+              <li><strong><code>Quit</code>:</strong> Calls <code>exit.write(AppExit::Success);</code> via <code>MessageWriter&lt;AppExit&gt;</code>.</li>
+            </ul>
+          </li>
+          <li><strong>Game Over Transition &amp; Screen (<code>AppState::GameOver</code>):</strong> In <code>update_round_phase</code>, when <code>MatchOutcome::PlayerEliminated</code> (or <code>PlayerWon</code>) triggers, call <code>next_app_state.set(AppState::GameOver)</code> and show <strong>Restart</strong> &amp; <strong>Quit</strong>!</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 3 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn spawn_main_menu(mut commands: Commands) {
+    let root = commands
+        .spawn((
+            DespawnOnExit(AppState::MainMenu),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(24.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.05, 0.07, 0.10)),
+            children![
+                (
+                    Text::new("TAG"),
+                    TextFont::from_font_size(52.0),
+                    TextColor(Color::srgb(0.97, 0.51, 0.40)),
+                ),
+                (
+                    Text::new("WASD / Arrows to move (1.2x speed)  •  Avoid holding IT &gt; 10s"),
+                    TextFont::from_font_size(15.0),
+                    TextColor(Color::srgb(0.55, 0.60, 0.68)),
+                ),
+            ],
+        ))
+        .id();
+
+    let mut start_btn = commands.spawn((ChildOf(root), button_bundle("Start")));
+    style_button_hover(&amp;mut start_btn);
+    start_btn.observe(|click: On&lt;PointerClick&gt;, mut next_state: ResMut&lt;NextState&lt;AppState&gt;&gt;| {
+        if click.button == PointerButton::Primary {
+            next_state.set(AppState::Playing);
+        }
+    });
+}
+
+fn toggle_pause_on_escape(
+    keyboard: Res&lt;ButtonInput&lt;KeyCode&gt;&gt;,
+    play_state: Res&lt;State&lt;PlayState&gt;&gt;,
+    mut next_play_state: ResMut&lt;NextState&lt;PlayState&gt;&gt;,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        match play_state.get() {
+            PlayState::Running => next_play_state.set(PlayState::Paused),
+            PlayState::Paused => next_play_state.set(PlayState::Running),
+        }
+    }
+}
+
+fn spawn_pause_menu(mut commands: Commands) {
+    let root = commands
+        .spawn((
+            DespawnOnExit(PlayState::Paused),
+            GlobalZIndex(10), // Guarantees the pause backdrop renders above the HUD
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(14.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.03, 0.04, 0.07, 0.78)),
+            children![
+                (
+                    Text::new("PAUSED"),
+                    TextFont::from_font_size(38.0),
+                    TextColor(Color::srgb(0.95, 0.97, 1.0)),
+                ),
+                (
+                    Text::new("Press Esc to resume"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(0.55, 0.62, 0.70)),
+                ),
+            ],
+        ))
+        .id();
+
+    let mut restart_btn = commands.spawn((ChildOf(root), button_bundle("Restart")));
+    style_button_hover(&amp;mut restart_btn);
+    restart_btn.observe(
+        |click: On&lt;PointerClick&gt;,
+         mut next_play: ResMut&lt;NextState&lt;PlayState&gt;&gt;,
+         mut next_app: ResMut&lt;NextState&lt;AppState&gt;&gt;| {
+            if click.button == PointerButton::Primary {
+                next_play.set(PlayState::Running);
+                next_app.set(AppState::Playing);
+            }
+        },
+    );
+
+    let mut quit_btn = commands.spawn((ChildOf(root), button_bundle("Quit")));
+    style_button_hover(&amp;mut quit_btn);
+    quit_btn.observe(|click: On&lt;PointerClick&gt;, mut exit: MessageWriter&lt;AppExit&gt;| {
+        if click.button == PointerButton::Primary {
+            exit.write(AppExit::Success);
+        }
+    });
+}
+
+fn spawn_game_over_menu(mut commands: Commands, outcome: Res&lt;MatchOutcome&gt;) {
+    let (headline, headline_color) = match *outcome {
+        MatchOutcome::PlayerWon => ("VICTORY!", Color::srgb(0.25, 0.86, 0.48)),
+        _ => ("GAME OVER — ELIMINATED", Color::srgb(0.97, 0.34, 0.30)),
+    };
+
+    let root = commands
+        .spawn((
+            DespawnOnExit(AppState::GameOver),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(16.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.05, 0.07, 0.10)),
+            children![(
+                Text::new(headline),
+                TextFont::from_font_size(38.0),
+                TextColor(headline_color),
+            )],
+        ))
+        .id();
+
+    let mut restart_btn = commands.spawn((ChildOf(root), button_bundle("Restart")));
+    style_button_hover(&amp;mut restart_btn);
+    restart_btn.observe(|click: On&lt;PointerClick&gt;, mut next_app: ResMut&lt;NextState&lt;AppState&gt;&gt;| {
+        if click.button == PointerButton::Primary {
+            next_app.set(AppState::Playing);
+        }
+    });
+
+    let mut quit_btn = commands.spawn((ChildOf(root), button_bundle("Quit")));
+    style_button_hover(&amp;mut quit_btn);
+    quit_btn.observe(|click: On&lt;PointerClick&gt;, mut exit: MessageWriter&lt;AppExit&gt;| {
+        if click.button == PointerButton::Primary {
+            exit.write(AppExit::Success);
+        }
+    });
+}</code></pre>
+            <p style="margin-top: 10px;">
+              Update <code>update_round_phase</code> to transition to <code>AppState::GameOver</code> whenever the match ends:
+            </p>
+<pre><code class="language-rust">fn update_round_phase(
+    mut commands: Commands,
+    time: Res&lt;Time&gt;,
+    mut phase: ResMut&lt;RoundPhase&gt;,
+    mut outcome: ResMut&lt;MatchOutcome&gt;,
+    mut next_app_state: ResMut&lt;NextState&lt;AppState&gt;&gt;,
+    characters: Query&lt;(Entity, Option&lt;&amp;Player&gt;, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;&gt;,
+) {
+    // ... inside RoundPhase::ActiveTag when timer finishes:
+    if was_player.is_some() {
+        *outcome = MatchOutcome::PlayerEliminated;
+        next_app_state.set(AppState::GameOver);
+        return;
+    }
+    // ... and when survivors.len() &lt;= 1:
+    if survivors.len() &lt;= 1 {
+        *outcome = MatchOutcome::PlayerWon;
+        next_app_state.set(AppState::GameOver);
+        return;
+    }
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Bevy Relationship Gem: <code>ChildOf(root)</code></strong>
+              <ul>
+                <li>Look at how clean <code>commands.spawn((ChildOf(root), button_bundle("Start")))</code> is! Capturing <code>let root = commands.spawn(...).id();</code> and attaching <code>ChildOf(root)</code> on child buttons makes them children of <code>root</code>—so when <code>root</code> despawns via <code>DespawnOnExit</code>, all its child buttons and grandchildren text nodes despawn automatically too!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 4</span>
+          <h3>Final <code>App</code> Schedule Wiring &amp; Optional Module Layout</h3>
+        </div>
+        <p>
+          Gate your <code>FixedUpdate</code> simulation chain with <code>.run_if(in_state(PlayState::Running))</code> and your gameplay <code>Update</code> systems with <code>.run_if(in_state(AppState::Playing))</code>!
+        </p>
+
+        <details class="solution">
+          <summary>Step 4 Reference Solution (Complete <code>main()</code> Registration)</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Tag".into(),
+                resolution: (1000, 720).into(),
+                ..default()
+            }),
+            ..default()
+        }))
+        .init_state::&lt;AppState&gt;()
+        .add_sub_state::&lt;PlayState&gt;()
+        .insert_resource(ClearColor(Color::srgb(0.05, 0.07, 0.10)))
+        .insert_resource(ArenaBounds {
+            half_size: Vec2::new(ARENA_WIDTH * 0.5, ARENA_HEIGHT * 0.5),
+        })
+        .init_resource::&lt;MatchOutcome&gt;()
+        .add_message::&lt;CollisionMessage&gt;()
+        // Permanent 2D camera
+        .add_systems(Startup, setup_camera)
+        // State entry screens &amp; match setup
+        .add_systems(OnEnter(AppState::MainMenu), spawn_main_menu)
+        .add_systems(
+            OnEnter(AppState::Playing),
+            (
+                reset_match_resources,
+                spawn_arena,
+                spawn_player,
+                spawn_npcs,
+                spawn_hud,
+            ),
+        )
+        .add_systems(OnEnter(PlayState::Paused), spawn_pause_menu)
+        .add_systems(OnEnter(AppState::GameOver), spawn_game_over_menu)
+        // Physics &amp; round rules — ONLY tick when unpaused in Playing!
+        .add_systems(
+            FixedUpdate,
+            (
+                tick_tag_cooldowns,
+                player_input,
+                npc_steering,
+                apply_velocity,
+                resolve_character_collisions,
+                confine_to_arena,
+                handle_tag_transfers,
+                update_round_phase,
+            )
+                .chain()
+                .run_if(in_state(PlayState::Running)),
+        )
+        // Visuals, HUD &amp; Esc toggle while in Playing
+        .add_systems(
+            Update,
+            (toggle_pause_on_escape, sync_character_colors, update_hud)
+                .run_if(in_state(AppState::Playing)),
+        )
+        .run();
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Next Step: Splitting Into Rust Modules Ready for Obstacle Maps!</strong>
+              <p style="margin-top: 6px;">
+                Once everything works in <code>src/main.rs</code>, Rust makes splitting into files effortless:
+              </p>
+              <ul>
+                <li>Create <code>src/arena.rs</code>, <code>src/physics.rs</code>, <code>src/tag.rs</code>, <code>src/hud.rs</code>, and <code>src/menus.rs</code>.</li>
+                <li>Declare <code>mod arena; mod physics; ...</code> at the top of <code>src/main.rs</code>, and wrap each module's systems in its own Bevy <code>Plugin</code>!</li>
+                <li><strong>Ready for Obstacle Maps Later:</strong> Because you already gave walls the <code>Wall</code> component in Lesson 01, adding interior obstacles is as simple as attaching <code>Collider { half_size }</code> to interior <code>Wall</code> entities and writing a static-vs-dynamic AABB check pushing <code>100%</code> of the MTV onto the character!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="checklist-card">
+        <h3>Final Game Verification Checklist (<code>cargo run</code>)</h3>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span><code>cargo run</code> boots into the <strong>Main Menu</strong>, where the only button is <strong>Start</strong>.</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Clicking <strong>Start</strong> spawns the bounded arena, HUD timer, your <code>1.2×</code> player square, and <code>1.0×</code> steering NPCs.</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Pressing <kbd>Esc</kbd> freezes all squares &amp; timers and shows the <strong>Pause Menu</strong> with only <strong>Restart</strong> and <strong>Quit</strong>; pressing <kbd>Esc</kbd> a second time resumes right where you left off!</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Clicking <strong>Restart</strong> resets the match cleanly with no duplicate walls, squares, or HUD overlays; clicking <strong>Quit</strong> closes the app cleanly.</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Holding <code>'it'</code> &gt; 10s eliminates that character, flashes a random survivor for 5s, and ends the game if you are eliminated!</span>
+        </label>
+      </div>
+    </section>
+
+    <footer class="lesson-footer">
+      <a class="footer-nav-link" href="06-hud-and-timer-ui.html">
+        <span>← Previous Lesson</span>
+        <strong>06: HUD &amp; Live Timer UI</strong>
+      </a>
+      <a class="footer-nav-link" href="index.html" style="text-align: right;">
+        <span>Course Complete! →</span>
+        <strong>Return to Course Hub</strong>
+      </a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const screen = document.getElementById("simScreen");
+      if (!screen) return;
+
+      let appState = "MainMenu";
+      let playState = null;
+
+      function render() {
+        const phys = appState === "Playing" && playState === "Running";
+        let btns = "—";
+        if (appState === "MainMenu") {
+          btns = "[Start]";
+          screen.innerHTML = `<div style="color:#f78166;font-size:22px;font-weight:800;margin-bottom:6px;">TAG</div><div style="color:#8b949e;font-size:12px;">Main Menu — Click "Start" above</div>`;
+        } else if (appState === "Playing" && playState === "Running") {
+          btns = "(In-Game HUD)";
+          screen.innerHTML = `<div style="color:#3fb950;font-weight:700;margin-bottom:6px;">PLAYING (Running)</div><div style="color:#8b949e;font-size:12px;">64Hz FixedUpdate Physics Active • Press Esc to Pause</div>`;
+        } else if (appState === "Playing" && playState === "Paused") {
+          btns = "[Restart, Quit]";
+          screen.innerHTML = `<div style="color:#f2cc60;font-weight:700;margin-bottom:6px;">PAUSED OVERLAY</div><div style="color:#8b949e;font-size:12px;">Physics Frozen • Press Esc to Resume, or Restart / Quit</div>`;
+        } else {
+          btns = "[Restart, Quit]";
+          screen.innerHTML = `<div style="color:#f7554a;font-weight:700;margin-bottom:6px;">GAME OVER — ELIMINATED</div><div style="color:#8b949e;font-size:12px;">Arena Despawned • Click Restart for a Fresh Match</div>`;
+        }
+
+        document.getElementById("roAppState").textContent = appState;
+        document.getElementById("roPlayState").textContent = playState || "None";
+        const phEl = document.getElementById("roPhys");
+        phEl.textContent = phys ? "true (64 Hz)" : "false (frozen)";
+        phEl.style.color = phys ? "var(--green)" : "var(--text-muted)";
+        document.getElementById("roBtns").textContent = btns;
+      }
+
+      document.getElementById("simStart").addEventListener("click", () => {
+        if (appState === "MainMenu") {
+          appState = "Playing";
+          playState = "Running";
+          render();
+        }
+      });
+
+      document.getElementById("simEsc").addEventListener("click", () => {
+        if (appState === "Playing") {
+          playState = playState === "Running" ? "Paused" : "Running";
+          render();
+        }
+      });
+
+      document.getElementById("simRestart").addEventListener("click", () => {
+        if ((appState === "Playing" && playState === "Paused") || appState === "GameOver") {
+          appState = "Playing";
+          playState = "Running";
+          render();
+        }
+      });
+
+      document.getElementById("simElim").addEventListener("click", () => {
+        if (appState === "Playing" && playState === "Running") {
+          appState = "GameOver";
+          playState = null;
+          render();
+        }
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

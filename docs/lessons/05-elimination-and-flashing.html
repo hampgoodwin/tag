@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lesson 05: 10s Elimination, Random Selection &amp; 5s Flash — Tag in Bevy 0.20</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="lesson.js" defer></script>
+</head>
+<body data-lesson-id="05">
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-badge">L05</span>
+      <div class="brand-text">
+        <h1>Elimination &amp; 5s Flash</h1>
+        <p>Lesson 05 of 07 — Build 2D Tag in Bevy 0.20</p>
+      </div>
+    </a>
+    <nav class="nav-pills" aria-label="Lessons">
+      <a class="nav-pill" href="index.html">Hub</a>
+      <a class="nav-pill" data-lesson-pill="01" href="01-arena-and-camera.html">01</a>
+      <a class="nav-pill" data-lesson-pill="02" href="02-player-movement-and-timestep.html">02</a>
+      <a class="nav-pill" data-lesson-pill="03" href="03-npcs-and-2d-collisions.html">03</a>
+      <a class="nav-pill" data-lesson-pill="04" href="04-tag-mechanics.html">04</a>
+      <a class="nav-pill active" data-lesson-pill="05" href="05-elimination-and-flashing.html">05</a>
+      <a class="nav-pill" data-lesson-pill="06" href="06-hud-and-timer-ui.html">06</a>
+      <a class="nav-pill" data-lesson-pill="07" href="07-menus-pause-and-game-over.html">07</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="btn" id="toggleSolutionsBtn" type="button">Expand Solutions</button>
+      <button class="btn btn-done" id="markDoneBtn" type="button">Mark Complete</button>
+      <button class="btn" id="themeToggle" type="button">Light theme</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="lesson-hero">
+      <div class="lesson-eyebrow">
+        <span class="pill pill-rust">Algebraic Enums &amp; rand 0.10</span>
+        <span class="pill pill-bevy">Timers &amp; Entity Despawning</span>
+        <span class="pill pill-milestone">Elimination Loop</span>
+      </div>
+      <h2>Lesson 05: 10s Elimination Clock, Random Selection &amp; 5s Flash Phase</h2>
+      <p class="lesson-lead">
+        Now let's give Tag real stakes: if any character holds <code>'it'</code> for longer than <strong>10 seconds</strong>, they are eliminated!
+        Then a random surviving character <strong>flashes for 5 seconds</strong> before becoming the new <code>'it'</code>—and if the main player is eliminated, the match ends.
+      </p>
+    </div>
+
+    <div class="objectives-grid">
+      <div class="obj-card">
+        <h3 style="color: var(--blue);">Game Rules &amp; Timing</h3>
+        <ul>
+          <li><strong>10.0s</strong> per-holder elimination countdown (resets on tag transfer!)</li>
+          <li><strong>5.0s</strong> random survivor telegraph/flashing grace phase</li>
+          <li>Detecting Player elimination vs. Last-Survivor victory</li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--accent);">Bevy 0.20 Concepts</h3>
+        <ul>
+          <li><code>Timer::from_seconds(..., TimerMode::Once)</code> vs <code>Repeating</code></li>
+          <li><code>commands.entity(e).despawn()</code></li>
+          <li>Resource-driven phase machines</li>
+        </ul>
+      </div>
+      <div class="obj-card">
+        <h3 style="color: var(--purple);">Rust Concepts</h3>
+        <ul>
+          <li>Algebraic data types (<code>enum</code> variants carrying fields!)</li>
+          <li>Adding external crates (<code>rand = "0.10"</code>)</li>
+          <li>Dereferencing smart pointers (<code>ResMut&lt;T&gt;</code>) with <code>match &amp;mut *phase</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <section>
+      <h2>1. Making Invalid States Unrepresentable with a Rust <code>enum</code></h2>
+      <p>
+        In many languages, you might model the round clock with a struct full of booleans and nullable fields:
+        <code>is_flashing: bool</code>, <code>pending_entity: Option&lt;Entity&gt;</code>, <code>it_timer: Timer</code>, <code>flash_timer: Timer</code>.
+        That invites bugs: what if <code>is_flashing</code> is <code>true</code> while <code>pending_entity</code> is <code>None</code>, or both timers tick at once?
+      </p>
+      <p>
+        In Rust, an <strong><code>enum</code> is a sum type (tagged union)</strong>—each variant can hold its own dedicated fields!
+        A match is <em>either</em> in <code>ActiveTag</code> (counting down 10s while someone has <code>IsIt</code>) <em>or</em> in <code>FlashingNext</code> (counting down 5s while a randomly chosen <code>target</code> flashes):
+      </p>
+<pre><code class="language-rust">#[derive(Resource)]
+pub enum RoundPhase {
+    ActiveTag {
+        timer: Timer, // 10.0s Once
+    },
+    FlashingNext {
+        target: Entity,
+        timer: Timer,      // 5.0s Once
+        flash_tick: Timer, // 0.14s Repeating strobe
+        flash_on: bool,
+    },
+}</code></pre>
+
+      <!-- Interactive Phase Timeline Lab -->
+      <div class="lab-card">
+        <div class="lab-header">
+          <div class="lab-title">Interactive Lab: <code>RoundPhase</code> 10s → Eliminate → 5s Flash Machine</div>
+          <div class="lab-controls">
+            <button class="btn btn-primary" id="btnPassTag" type="button">Simulate Tag Pass (Reset 10s)</button>
+            <button class="btn" id="btnSkip" type="button">Skip +3s</button>
+          </div>
+        </div>
+        <div class="lab-body">
+          <div class="lab-canvas-wrap">
+            <canvas id="phaseCanvas" width="520" height="200"></canvas>
+          </div>
+          <div class="lab-readout">
+            <div class="readout-row">
+              <span class="readout-key">Enum Variant:</span>
+              <span class="readout-val" id="roVariant" style="color: var(--accent);">ActiveTag</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Timer Left:</span>
+              <span class="readout-val" id="roTimer">10.0s</span>
+            </div>
+            <div class="readout-row">
+              <span class="readout-key">Survivors:</span>
+              <span class="readout-val" id="roSurv">4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Guided Building Blocks</h2>
+
+      <!-- Step 1 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 1</span>
+          <h3>Add <code>rand = "0.10"</code> to <code>Cargo.toml</code></h3>
+        </div>
+        <p>
+          Rust keeps its standard library minimal and delegates random number generation to the community-standard <code>rand</code> crate (<code>0.10</code> is already cached in your <code>Cargo.lock</code>!).
+          Add <code>rand = "0.10"</code> under <code>[dependencies]</code> in <code>Cargo.toml</code>:
+        </p>
+
+        <details class="solution">
+          <summary>Step 1 Reference Solution (<code>Cargo.toml</code>)</summary>
+          <div class="solution-body">
+<pre><code class="language-toml">[dependencies]
+bevy = { version = "0.20.1", features = ["dynamic_linking"] }
+rand = "0.10"</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Crate Tip:</strong>
+              <ul>
+                <li>In <code>rand 0.10</code>, <code>rand::random_range(0..len)</code> samples a uniform <code>usize</code> index in <code>[0, len)</code> using thread-local entropy—no boilerplate trait imports required!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 2</span>
+          <h3>Define <code>RoundPhase</code>, <code>MatchOutcome</code> &amp; Reset the 10s Timer on Tag</h3>
+        </div>
+        <ul class="api-list">
+          <li>Add constants <code>ELIMINATION_SECS: f32 = 10.0</code> and <code>FLASH_SECS: f32 = 5.0</code>.</li>
+          <li>Define <code>RoundPhase</code> with helper constructor <code>RoundPhase::new_active()</code> returning <code>RoundPhase::ActiveTag { timer: Timer::from_seconds(ELIMINATION_SECS, TimerMode::Once) }</code>.</li>
+          <li>Define <code>#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)] pub enum MatchOutcome { #[default] Ongoing, PlayerEliminated, PlayerWon }</code> (Lesson 07 will connect this directly to your Game Over screen!).</li>
+          <li>In <code>handle_tag_transfers</code>, add <code>mut phase: ResMut&lt;RoundPhase&gt;</code>: whenever <code>IsIt</code> transfers to a new square, reset the <code>ActiveTag</code> timer (<code>if let RoundPhase::ActiveTag { timer } = &amp;mut *phase { timer.reset(); }</code>) so the new holder gets a fresh 10.0 seconds!</li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 2 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">pub const ELIMINATION_SECS: f32 = 10.0;
+pub const FLASH_SECS: f32 = 5.0;
+
+#[derive(Resource)]
+pub enum RoundPhase {
+    ActiveTag {
+        timer: Timer,
+    },
+    FlashingNext {
+        target: Entity,
+        timer: Timer,
+        flash_tick: Timer,
+        flash_on: bool,
+    },
+}
+
+impl RoundPhase {
+    pub fn new_active() -> Self {
+        Self::ActiveTag {
+            timer: Timer::from_seconds(ELIMINATION_SECS, TimerMode::Once),
+        }
+    }
+}
+
+#[derive(Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MatchOutcome {
+    #[default]
+    Ongoing,
+    PlayerEliminated,
+    PlayerWon,
+}</code></pre>
+            <p style="margin-top: 10px;">Update <code>handle_tag_transfers</code> to accept <code>mut phase: ResMut&lt;RoundPhase&gt;</code> and reset the 10s timer right before <code>break;</code>:</p>
+<pre><code class="language-rust">fn handle_tag_transfers(
+    mut commands: Commands,
+    mut collisions: MessageReader&lt;CollisionMessage&gt;,
+    mut phase: ResMut&lt;RoundPhase&gt;,
+    it_query: Query&lt;Entity, With&lt;IsIt&gt;&gt;,
+    cooldowns: Query&lt;&amp;TagCooldown&gt;,
+) {
+    let Some(it_entity) = it_query.iter().next() else {
+        return;
+    };
+
+    for &amp;CollisionMessage(a, b) in collisions.read() {
+        let (old_it, new_it) = if a == it_entity {
+            (a, b)
+        } else if b == it_entity {
+            (b, a)
+        } else {
+            continue;
+        };
+
+        if cooldowns.contains(old_it) || cooldowns.contains(new_it) {
+            continue;
+        }
+
+        commands
+            .entity(old_it)
+            .remove::&lt;IsIt&gt;()
+            .insert(TagCooldown(Timer::from_seconds(TAG_COOLDOWN_SECS, TimerMode::Once)));
+        commands.entity(new_it).insert(IsIt);
+
+        if let RoundPhase::ActiveTag { timer } = &amp;mut *phase {
+            timer.reset();
+        }
+        break;
+    }
+}</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concept: Why <code>&amp;mut *phase</code>?</strong>
+              <ul>
+                <li><code>phase</code> has wrapper type <code>ResMut&lt;RoundPhase&gt;</code>, which implements <code>DerefMut&lt;Target = RoundPhase&gt;</code>. Writing <code>*phase</code> dereferences through <code>ResMut</code> to the underlying <code>RoundPhase</code>, and <code>&amp;mut</code> borrows its fields mutably instead of trying to move the enum out of the resource!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card">
+        <div class="step-header">
+          <span class="step-num">Step 3</span>
+          <h3>Write <code>update_round_phase</code> (10s Elimination + Random 5s Flash)</h3>
+        </div>
+        <p>
+          Create a system <code>update_round_phase</code> that ticks <code>ResMut&lt;RoundPhase&gt;</code> when <code>*outcome == MatchOutcome::Ongoing</code>:
+        </p>
+        <ul class="api-list">
+          <li>
+            <strong>In <code>RoundPhase::ActiveTag { timer }</code>:</strong>
+            If <code>timer.tick(time.delta()).just_finished()</code>:
+            <ol>
+              <li>Find the current <code>IsIt</code> entity from <code>characters: Query&lt;(Entity, Option&lt;&amp;Player&gt;, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;&gt;</code>.</li>
+              <li>Despawn that entity (<code>commands.entity(it_entity).despawn();</code>).</li>
+              <li>If that entity had <code>Player</code>, set <code>*outcome = MatchOutcome::PlayerEliminated;</code> and return!</li>
+              <li>Collect all remaining surviving entities (<code>e != it_entity</code>) into a <code>Vec&lt;Entity&gt;</code>.</li>
+              <li>If <code>survivors.len() &lt;= 1</code>, the player is the sole survivor—set <code>*outcome = MatchOutcome::PlayerWon;</code> and return!</li>
+              <li>Otherwise pick <code>let chosen = survivors[rand::random_range(0..survivors.len())];</code> and set <code>*phase = RoundPhase::FlashingNext { target: chosen, timer: Timer::from_seconds(FLASH_SECS, TimerMode::Once), flash_tick: Timer::from_seconds(0.14, TimerMode::Repeating), flash_on: true };</code>!</li>
+            </ol>
+          </li>
+          <li>
+            <strong>In <code>RoundPhase::FlashingNext { target, timer, flash_tick, flash_on }</code>:</strong>
+            <ol>
+              <li>If <code>flash_tick.tick(time.delta()).just_finished()</code>, toggle <code>*flash_on = !*flash_on</code>.</li>
+              <li>If <code>timer.tick(time.delta()).just_finished()</code>, promote <code>target</code> with <code>commands.entity(*target).insert(IsIt);</code> and set <code>*phase = RoundPhase::new_active();</code>!</li>
+            </ol>
+          </li>
+          <li>
+            <strong>Visual Strobe:</strong> Update <code>sync_character_colors</code> to read <code>Res&lt;RoundPhase&gt;</code> and <code>Entity</code>—when <code>FlashingNext</code> has <code>entity == target &amp;&amp; flash_on</code>, set <code>sprite.color = Color::srgb(1.0, 0.88, 0.32)</code> (bright warning gold/white)!
+            (Bonus: in <code>npc_steering</code>, you can also treat <code>FlashingNext.target</code> as the threat position so NPCs scatter during the 5-second warning!)
+          </li>
+        </ul>
+
+        <details class="solution">
+          <summary>Step 3 Reference Solution</summary>
+          <div class="solution-body">
+<pre><code class="language-rust">fn update_round_phase(
+    mut commands: Commands,
+    time: Res&lt;Time&gt;,
+    mut phase: ResMut&lt;RoundPhase&gt;,
+    mut outcome: ResMut&lt;MatchOutcome&gt;,
+    characters: Query&lt;(Entity, Option&lt;&amp;Player&gt;, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;&gt;,
+) {
+    if *outcome != MatchOutcome::Ongoing {
+        return;
+    }
+
+    let dt = time.delta();
+
+    match &amp;mut *phase {
+        RoundPhase::ActiveTag { timer } => {
+            if timer.tick(dt).just_finished() {
+                // Find who held 'it' too long
+                let Some((eliminated, was_player, _)) =
+                    characters.iter().find(|&amp;(_, _, is_it)| is_it.is_some())
+                else {
+                    return;
+                };
+
+                commands.entity(eliminated).despawn();
+
+                if was_player.is_some() {
+                    *outcome = MatchOutcome::PlayerEliminated;
+                    println!("GAME OVER — You were eliminated!");
+                    return;
+                }
+
+                let survivors: Vec&lt;Entity&gt; = characters
+                    .iter()
+                    .filter(|&amp;(e, _, _)| e != eliminated)
+                    .map(|(e, _, _)| e)
+                    .collect();
+
+                if survivors.len() &lt;= 1 {
+                    *outcome = MatchOutcome::PlayerWon;
+                    println!("VICTORY — You are the last square standing!");
+                    return;
+                }
+
+                let next_idx = rand::random_range(0..survivors.len());
+                let chosen = survivors[next_idx];
+
+                *phase = RoundPhase::FlashingNext {
+                    target: chosen,
+                    timer: Timer::from_seconds(FLASH_SECS, TimerMode::Once),
+                    flash_tick: Timer::from_seconds(0.14, TimerMode::Repeating),
+                    flash_on: true,
+                };
+            }
+        }
+        RoundPhase::FlashingNext {
+            target,
+            timer,
+            flash_tick,
+            flash_on,
+        } => {
+            if flash_tick.tick(dt).just_finished() {
+                *flash_on = !*flash_on;
+            }
+            if timer.tick(dt).just_finished() {
+                let next_it = *target;
+                commands.entity(next_it).insert(IsIt);
+                *phase = RoundPhase::new_active();
+            }
+        }
+    }
+}
+
+fn sync_character_colors(
+    phase: Res&lt;RoundPhase&gt;,
+    mut query: Query&lt;(Entity, &amp;mut Sprite, Option&lt;&amp;Player&gt;, Option&lt;&amp;IsIt&gt;), With&lt;Character&gt;&gt;,
+) {
+    let flashing_target = match &amp;*phase {
+        RoundPhase::FlashingNext { target, flash_on: true, .. } => Some(*target),
+        _ => None,
+    };
+
+    for (entity, mut sprite, player, is_it) in &amp;mut query {
+        if Some(entity) == flashing_target {
+            sprite.color = Color::srgb(1.0, 0.88, 0.32); // Flashing gold warning!
+            continue;
+        }
+        sprite.color = match (is_it.is_some(), player.is_some()) {
+            (true, true) => Color::srgb(1.0, 0.45, 0.20),
+            (true, false) => Color::srgb(0.95, 0.26, 0.26),
+            (false, true) => Color::srgb(0.30, 0.67, 0.97),
+            (false, false) => Color::srgb(0.41, 0.86, 0.49),
+        };
+    }
+}</code></pre>
+            <p style="margin-top: 10px;">Insert both resources in <code>main()</code> and append <code>update_round_phase</code> to the end of your <code>FixedUpdate</code> chain:</p>
+<pre><code class="language-rust">        .insert_resource(RoundPhase::new_active())
+        .init_resource::&lt;MatchOutcome&gt;()
+        .add_systems(
+            FixedUpdate,
+            (
+                tick_tag_cooldowns,
+                player_input,
+                npc_steering,
+                apply_velocity,
+                resolve_character_collisions,
+                confine_to_arena,
+                handle_tag_transfers,
+                update_round_phase,
+            )
+                .chain(),
+        )</code></pre>
+            <p style="margin-top: 10px;">Optional steering upgrade — in <code>npc_steering</code>, pass <code>phase: Res&lt;RoundPhase&gt;</code> so other NPCs already scatter away from the flashing <code>target</code> during the 5s warning:</p>
+<pre><code class="language-rust">    // Replace `it_pos` lookup in npc_steering with a (threat_entity, threat_pos) lookup:
+    let threat = snapshot
+        .iter()
+        .find(|&amp;&amp;(e, _, is_it)| {
+            is_it || matches!(&amp;*phase, RoundPhase::FlashingNext { target, .. } if *target == e)
+        })
+        .map(|&amp;(e, pos, _)| (e, pos));
+
+    // Then inside the non-'it' flee branch, only flee when the threat isn't self!
+    if let Some((threat_entity, threat_pos)) = threat && threat_entity != entity { ... }</code></pre>
+            <div class="rust-notes">
+              <strong>Rust Concepts Inside This Snippet:</strong>
+              <ul>
+                <li><strong>Borrow Lifetimes Across Enum Replacement:</strong> Look at <code>let next_it = *target;</code> right before <code>*phase = RoundPhase::new_active();</code>. Because <code>target</code> is a mutable reference into <code>*phase</code>, copying out the <code>Copy</code> <code>Entity</code> ID first ends the borrow of <code>target</code> so Rust lets you overwrite <code>*phase</code> cleanly on the next line!</li>
+                <li><strong>Matching by Reference (<code>match &amp;*phase</code>):</strong> <code>RoundPhase</code> contains non-<code>Copy</code> <code>Timer</code> fields, so matching <code>&amp;*phase</code> borrows fields by reference (letting you dereference <code>*target</code> cleanly) without risking accidental moves!</li>
+                <li><strong>Struct Rest Pattern (<code>..</code>):</strong> In <code>RoundPhase::FlashingNext { target, flash_on: true, .. }</code>, the <code>..</code> ignores <code>timer</code> and <code>flash_tick</code> while matching only when <code>flash_on</code> is literally <code>true</code>!</li>
+                <li><strong>Edition 2024 Let-Chains:</strong> <code>if let Some(...) = threat &amp;&amp; threat_entity != entity</code> combines pattern matching and boolean guards into one flat <code>if</code> statement!</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="checklist-card">
+        <h3>Verify Before Moving On (<code>cargo run</code>)</h3>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Dodge the red square for 10 seconds—after 10s, the <code>'it'</code> square vanishes (despawns)!</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>Immediately after elimination, one randomly chosen surviving square flashes gold for 5 seconds before turning red and becoming <code>'it'</code>!</span>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" />
+          <span>If you become <code>'it'</code> and intentionally wait 10 seconds without tagging anyone, your square is eliminated and <code>GAME OVER</code> logs to the console!</span>
+        </label>
+      </div>
+    </section>
+
+    <footer class="lesson-footer">
+      <a class="footer-nav-link" href="04-tag-mechanics.html">
+        <span>← Previous Lesson</span>
+        <strong>04: Tag Mechanics &amp; Cooldowns</strong>
+      </a>
+      <a class="footer-nav-link" href="06-hud-and-timer-ui.html" style="text-align: right;">
+        <span>Next Lesson →</span>
+        <strong>06: HUD &amp; Live Timer UI</strong>
+      </a>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById("phaseCanvas");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const btnPass = document.getElementById("btnPassTag");
+      const btnSkip = document.getElementById("btnSkip");
+
+      let state = {
+        mode: "ActiveTag",
+        timeLeft: 10.0,
+        squares: [true, true, true, true],
+        itIdx: 0,
+        flashIdx: -1,
+        flashAccum: 0
+      };
+
+      function pickAlive(exclude) {
+        const alive = [];
+        state.squares.forEach((ok, idx) => { if (ok && idx !== exclude) alive.push(idx); });
+        return alive;
+      }
+
+      btnPass.addEventListener("click", () => {
+        if (state.mode === "ActiveTag") {
+          const others = pickAlive(state.itIdx);
+          if (others.length > 0) {
+            state.itIdx = others[Math.floor(Math.random() * others.length)];
+            state.timeLeft = 10.0;
+          }
+        }
+      });
+
+      btnSkip.addEventListener("click", () => {
+        state.timeLeft = Math.max(0.05, state.timeLeft - 3.0);
+      });
+
+      let last = performance.now();
+      function tick(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+
+        state.timeLeft -= dt;
+        state.flashAccum += dt;
+
+        if (state.timeLeft <= 0) {
+          if (state.mode === "ActiveTag") {
+            state.squares[state.itIdx] = false;
+            const alive = pickAlive(-1);
+            if (alive.length <= 1) {
+              state.squares = [true, true, true, true];
+              state.itIdx = 0;
+              state.mode = "ActiveTag";
+              state.timeLeft = 10.0;
+            } else {
+              state.flashIdx = alive[Math.floor(Math.random() * alive.length)];
+              state.itIdx = -1;
+              state.mode = "FlashingNext";
+              state.timeLeft = 5.0;
+            }
+          } else {
+            state.itIdx = state.flashIdx;
+            state.flashIdx = -1;
+            state.mode = "ActiveTag";
+            state.timeLeft = 10.0;
+          }
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#080b10";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Progress bar
+        const maxT = state.mode === "ActiveTag" ? 10.0 : 5.0;
+        const pct = Math.max(0, state.timeLeft / maxT);
+        ctx.fillStyle = "#1c222d";
+        ctx.fillRect(40, 26, 440, 14);
+        ctx.fillStyle = state.mode === "ActiveTag" ? "#f7554a" : "#f2cc60";
+        ctx.fillRect(40, 26, 440 * pct, 14);
+
+        const flashOn = Math.floor(state.flashAccum / 0.14) % 2 === 0;
+        for (let i = 0; i < 4; i++) {
+          const x = 110 + i * 100;
+          const y = 120;
+          if (!state.squares[i]) {
+            ctx.strokeStyle = "rgba(139,148,158,0.28)";
+            ctx.setLineDash([4, 4]);
+            ctx.strokeRect(x - 24, y - 24, 48, 48);
+            ctx.setLineDash([]);
+            ctx.fillStyle = "#6e7681";
+            ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+            ctx.fillText("OUT", x - 11, y + 4);
+            continue;
+          }
+          let color = i === 0 ? "#4dabf7" : "#3fb950";
+          if (i === state.itIdx) color = "#f7554a";
+          if (i === state.flashIdx && flashOn) color = "#ffe052";
+          ctx.fillStyle = color;
+          ctx.fillRect(x - 24, y - 24, 48, 48);
+          ctx.fillStyle = "#080b10";
+          ctx.font = "bold 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+          ctx.fillText(i === 0 ? "YOU" : `NPC${i}`, x - 15, y + 4);
+        }
+
+        const vEl = document.getElementById("roVariant");
+        vEl.textContent = state.mode;
+        vEl.style.color = state.mode === "ActiveTag" ? "var(--accent)" : "var(--amber)";
+        btnPass.disabled = state.mode !== "ActiveTag";
+        btnPass.style.opacity = state.mode === "ActiveTag" ? "1" : "0.45";
+        document.getElementById("roTimer").textContent = `${Math.max(0, state.timeLeft).toFixed(1)}s`;
+        document.getElementById("roSurv").textContent = `${state.squares.filter(Boolean).length}`;
+
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>
